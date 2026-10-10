@@ -379,20 +379,7 @@ fn build_decision(
         candidate_tiles: &candidate_tiles,
     };
 
-    let context = TurnContext {
-        bakaze: snap.bakaze.clone(),
-        kyoku: snap.kyoku,
-        honba: snap.honba,
-        scores: snap.players.iter().map(|p| p.score).collect(),
-        riichi_seats: snap
-            .players
-            .iter()
-            .filter(|p| p.riichi_declared)
-            .map(|p| p.seat)
-            .collect(),
-        dora_indicators: snap.dora_markers.clone(),
-        our_riichi: me.riichi_declared || pending.declared_riichi,
-    };
+    let context = turn_context(&snap, me.riichi_declared || pending.declared_riichi);
     let tehai = me.tehai.clone();
     let draw = me
         .drawn_tile
@@ -420,6 +407,29 @@ fn build_decision(
 fn push_unique<'a>(list: &mut Vec<&'a DiscardCandidate>, c: &'a DiscardCandidate) {
     if !list.iter().any(|x| x.discard == c.discard) {
         list.push(c);
+    }
+}
+
+/// Snapshot → situational frame. Shared by the review assembler and the
+/// live coach. `our_riichi` includes a riichi declared this turn (the
+/// `Reach` event lands between draw and discard).
+pub(crate) fn turn_context(
+    snap: &crate::game_state::snapshot::GameStateSnapshot,
+    our_riichi: bool,
+) -> TurnContext {
+    TurnContext {
+        bakaze: snap.bakaze.clone(),
+        kyoku: snap.kyoku,
+        honba: snap.honba,
+        scores: snap.players.iter().map(|p| p.score).collect(),
+        riichi_seats: snap
+            .players
+            .iter()
+            .filter(|p| p.riichi_declared)
+            .map(|p| p.seat)
+            .collect(),
+        dora_indicators: snap.dora_markers.clone(),
+        our_riichi,
     }
 }
 

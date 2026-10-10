@@ -25,7 +25,8 @@ use crate::schema::{
     ReadInspectorResponse, ReadLogRequest, ReadLogResponse, Snapshot,
 };
 use crate::tutorial::assemble::{ReplayOutline, ReplayStep};
-use crate::tutorial::material::{ReviewCoverage, ReviewDoc};
+use crate::tutorial::material::{ReviewCoverage, ReviewDoc, TurnDoc};
+use crate::tutorial::TutorialProvider;
 use crate::util::resolve_dir;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -1511,6 +1512,66 @@ pub async fn tutorial_delete_review(
         .map_err(|e| format!("{e:#}"))
 }
 
+/// Deep-dive explanation of the *current* live decision (the in-game
+/// coach tile's button, D-0008). Cache-first per `session_key + junme`;
+/// consent-gated; numbers cross-checked against the locally re-derived
+/// material before the reply is returned. Errors are user-readable
+/// ("no live decision point", consent hint, provider failure) — the
+/// template layer keeps working regardless.
+#[tauri::command]
+pub async fn tutorial_explain_live(state: State<'_, AppState>) -> CmdResult<TurnDoc> {
+    let Some(turn) = state.tutorial.live.current() else {
+        return Err("no live decision point right now — wait for your next draw".into());
+    };
+    let key = format!("{}-t{}", turn.session_key, turn.material.junme);
+
+    let ctx = state.tutorial.clone();
+    let key_for_cache = key.clone();
+    if let Some(cached) =
+        tokio::task::spawn_blocking(move || ctx.store.load_turn_doc(&key_for_cache))
+            .await
+            .map_err(|e| format!("tutorial live cache join error: {e}"))?
+            .map_err(|e| format!("{e:#}"))?
+    {
+        return Ok(cached.doc);
+    }
+
+    let cfg = state.config.read().await.tutorial.clone();
+    if !crate::tutorial::outbound_allowed(&cfg) {
+        return Err(
+            "outbound not allowed: enable the tutorial, give upload consent, and configure \
+             the LLM endpoint in Settings first"
+                .into(),
+        );
+    }
+
+    let provider = crate::tutorial::OpenAiCompatProvider::new(&cfg.llm)
+        .map_err(|e| format!("failed to build the tutorial LLM provider: {e:#}"))?;
+    let resp = provider
+        .complete(crate::tutorial::ChatRequest {
+            messages: crate::tutorial::build_turn_messages(&turn.material),
+            temperature: Some(0.2),
+            max_tokens: Some(1500),
+        })
+        .await
+        .map_err(|e| format!("LLM request failed: {e:#}"))?;
+    let doc = crate::tutorial::parse_turn_doc(&resp.content, &turn.material)
+        .map_err(|e| format!("LLM reply rejected by validation: {e:#}"))?;
+
+    let live_doc = crate::tutorial::LiveTurnDoc {
+        key,
+        doc: doc.clone(),
+        model: resp.model,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let ctx = state.tutorial.clone();
+    tokio::task::spawn_blocking(move || ctx.store.save_turn_doc(&live_doc))
+        .await
+        .map_err(|e| format!("tutorial live save join error: {e}"))?
+        .map_err(|e| format!("{e:#}"))?;
+    Ok(doc)
+}
+
 /// `shinkuan/Akagi` is the canonical upstream — kept here as a const
 /// instead of plumbing through config so the user can't accidentally
 /// point the auto-updater at a fork.
@@ -1982,6 +2043,7 @@ macro_rules! ipc_handlers {
             $crate::ipc::commands::tutorial_get_review,
             $crate::ipc::commands::tutorial_generate_review,
             $crate::ipc::commands::tutorial_delete_review,
+            $crate::ipc::commands::tutorial_explain_live,
         ]
     };
 }

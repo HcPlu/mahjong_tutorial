@@ -33,7 +33,7 @@ PostTrackerBus ──► tracker ──► AnalysisBus ──► ipc 事件 `ana
 
 - **模板层零后端改动**：`analysis-result` / `bot-response` 事件已把所需数字（`AnalysisResult` 全量 + `meta.show` 候选）送到前端，快照经既有命令 `get_game_snapshot` 拉取。不新增 event_bus 通道、不新增 Tauri 事件。
 - **决策点信号**：后端 `TrackedEvent.can_act` 不直接出网，前端以 `bot-response` 事件到达（bot 只在我方决策点响应）作为"该出话了"的触发，配合 `turn_count` 去重。
-- **深讲原料来自后端自己的总线**：`src/tutorial/live.rs` 在 `src/lib.rs` 装配时订阅 `AnalysisBus` + `BotResponseBus`，把最近一个决策点装配成 `TurnMaterial`（有界内存：只保留当前决策点，新的覆盖旧的）。数字由后端从自己的总线取，而不是信任前端回传——D-0005 的纪律在数据源头就成立。
+- **深讲原料来自后端自己的总线**（实施时按 D-0012 修正）：`src/tutorial/live.rs` 在 `src/lib.rs` 装配时订阅 `PostTrackerBus`（StartGame 重置 session key / 我方 Tsumo 计 junme）+ `BotResponseBus`（决策点信号），收到 bot 响应时**直接锁共享 tracker 快照、`to_player_info` + `analyze` 即时重算**（与 analysis runner 同一纯函数链，~1ms）。原设计配对 `AnalysisBus` × `BotResponseBus`，但两个并行订阅者没有先后保证（bot 响应可能先于对应 analysis 结果发布），重算彻底消除配对时序问题；有界内存不变：只保留当前决策点，新的覆盖旧的。数字由后端从引擎重算，而不是信任前端回传——D-0005 的纪律在数据源头就成立。
 
 ## 2. 触发与节流（前端状态机）
 

@@ -105,6 +105,51 @@ fn extract_json_span(content: &str) -> Option<&str> {
     (end > start).then(|| &content[start..=end])
 }
 
+/// Parse and validate a single-turn deep-dive reply against its material
+/// (the live coach variant, D-0008 §4). Same rules as
+/// [`parse_review_doc`], minus the array/overview contract: junme must
+/// match, `recommended` must be an offered candidate, `numbers` must
+/// equal that candidate's engine numbers exactly, and the explanation
+/// must be non-empty.
+pub fn parse_turn_doc(
+    content: &str,
+    material: &crate::tutorial::material::TurnMaterial,
+) -> Result<crate::tutorial::material::TurnDoc> {
+    let json_span = extract_json_span(content).context("no JSON object found in LLM reply")?;
+    let mut doc: crate::tutorial::material::TurnDoc = serde_json::from_str(json_span)
+        .with_context(|| "LLM reply is not valid JSON for a turn document")?;
+
+    if doc.junme != material.junme {
+        bail!(
+            "junme {} does not match material {}",
+            doc.junme,
+            material.junme
+        );
+    }
+    let Some(cand) = material
+        .candidates
+        .iter()
+        .find(|c| c.label == doc.recommended)
+    else {
+        bail!(
+            "recommended label {:?} is not one of the offered candidates",
+            doc.recommended
+        );
+    };
+    if doc.numbers != cand.numbers {
+        bail!(
+            "engine numbers were altered (reply {:?} vs material {:?}) \
+             — hallucinated numbers are rejected",
+            doc.numbers,
+            cand.numbers
+        );
+    }
+    if doc.explanation_zh.trim().is_empty() {
+        bail!("empty explanation");
+    }
+    Ok(std::mem::take(&mut doc))
+}
+
 /// True when the engine numbers are structurally present-but-unset —
 /// exposed for the pipeline to decide whether a turn is reviewable at
 /// all (a default [`EngineNumbers`] means the engine had nothing to say,
@@ -244,5 +289,69 @@ mod tests {
         };
         let back: ReviewDoc = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
         assert_eq!(back, doc);
+    }
+
+    // --- live deep-dive (parse_turn_doc) ---
+
+    fn turn_material() -> TurnMaterial {
+        TurnMaterial {
+            junme: 5,
+            tehai: vec!["5s".into()],
+            draw: "6m".into(),
+            actual: "dahai:5s".into(),
+            candidates: vec![CandidateNumbers {
+                label: "dahai:5s".into(),
+                prob: 0.9,
+                numbers: EngineNumbers {
+                    shanten: 1,
+                    win_rate: Some(0.31),
+                    deal_in_rate: Some(0.08),
+                    avg_score: Some(3900),
+                },
+            }],
+            context: None,
+        }
+    }
+
+    fn turn_reply(numbers: &str) -> String {
+        format!(
+            r#"{{"junme":5,"recommended":"dahai:5s","numbers":{numbers},"explanation_zh":"切5s保进张，两面听牌机会更大。","headline":"保进张"}}"#
+        )
+    }
+
+    #[test]
+    fn parses_faithful_turn_reply() {
+        let raw = format!(
+            "讲解如下：\n{}\n以上",
+            turn_reply(
+                "{\"shanten\":1,\"win_rate\":0.31,\"deal_in_rate\":0.08,\"avg_score\":3900}"
+            )
+        );
+        let doc = parse_turn_doc(&raw, &turn_material()).unwrap();
+        assert_eq!(doc.junme, 5);
+        assert_eq!(doc.recommended, "dahai:5s");
+        assert_eq!(doc.headline.as_deref(), Some("保进张"));
+    }
+
+    #[test]
+    fn rejects_turn_reply_with_altered_numbers() {
+        let raw =
+            turn_reply("{\"shanten\":1,\"win_rate\":0.9,\"deal_in_rate\":0.08,\"avg_score\":3900}");
+        assert!(parse_turn_doc(&raw, &turn_material()).is_err());
+    }
+
+    #[test]
+    fn rejects_turn_reply_with_wrong_junme_or_label() {
+        let wrong_junme = turn_reply(
+            "{\"shanten\":1,\"win_rate\":0.31,\"deal_in_rate\":0.08,\"avg_score\":3900}",
+        )
+        .replace("\"junme\":5", "\"junme\":4");
+        assert!(parse_turn_doc(&wrong_junme, &turn_material()).is_err());
+
+        let wrong_label = turn_reply(
+            "{\"shanten\":1,\"win_rate\":0.31,\"deal_in_rate\":0.08,\"avg_score\":3900}",
+        )
+        .replace("dahai:5s", "dahai:9p");
+        assert!(parse_turn_doc(&wrong_label, &turn_material()).is_err());
     }
 }

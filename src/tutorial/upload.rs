@@ -49,6 +49,33 @@ pub fn build_messages(material: &ReviewMaterial) -> Vec<ChatMessage> {
     ]
 }
 
+/// Single-turn variant for the live coach deep dive (D-0008 §4). Same
+/// rendering of the decision point, a contract that returns exactly one
+/// turn object instead of the whole-game array.
+pub fn build_turn_messages(turn: &crate::tutorial::material::TurnMaterial) -> Vec<ChatMessage> {
+    vec![
+        ChatMessage::system(turn_system_prompt()),
+        ChatMessage::user(render_turn(turn)),
+    ]
+}
+
+/// The live coach's single-turn output contract: one `TurnDoc`-shaped
+/// object, no overview, no array.
+fn turn_system_prompt() -> String {
+    "你是麻将教练，面向初中级玩家教学。给出当前决策点的数据：本地分析引擎预先算好的数字\
+     （向听 shanten 为整数、和率 win_rate 与铳率 deal_in_rate 为0-1小数、期望打点 avg_score 为整数点数）、\
+     局况与候选切牌。你的职责：解释 bot 首选（实际选择）为什么好——headline 一句话结论（不超过20字）\
+     与 explanation_zh（60-120字讲解：取舍逻辑、与其他候选的对比、需要注意的局势）。\
+     recommended 填 bot 首选。\n\
+     铁律：所有数字必须原样引用，禁止计算、换算或修改；不得推荐候选之外的打法。\
+     只输出一个 JSON 对象，不要输出其他文字：\n\
+     {\"junme\": <巡号>, \"recommended\": \"<候选label>\", \"numbers\": {\"shanten\": <int>, \
+     \"win_rate\": <float|null>, \"deal_in_rate\": <float|null>, \"avg_score\": <int|null>}, \
+     \"explanation_zh\": \"<讲解>\", \"headline\": \"<一句话结论>\"}\n\
+     numbers 必须逐字段复制推荐候选的数字。"
+        .to_string()
+}
+
 fn system_prompt() -> String {
     // The output contract mirrors `material::ReviewDoc`'s serde shape.
     // If that type changes, change this string in the same commit.

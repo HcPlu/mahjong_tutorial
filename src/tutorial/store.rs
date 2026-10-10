@@ -27,6 +27,7 @@ use anyhow::{bail, Context, Result};
 use crate::tutorial::material::ReviewDoc;
 
 const REVIEWS_SUBDIR: &str = "reviews";
+const LIVE_SUBDIR: &str = "live";
 
 pub struct TutorialStore {
     root: PathBuf,
@@ -35,11 +36,13 @@ pub struct TutorialStore {
 }
 
 impl TutorialStore {
-    /// Open (or create) the store at `root`, creating `reviews/` if
-    /// missing.
+    /// Open (or create) the store at `root`, creating `reviews/` and
+    /// `live/` if missing.
     pub fn new(root: PathBuf) -> Result<Self> {
         fs::create_dir_all(root.join(REVIEWS_SUBDIR))
             .with_context(|| format!("failed to create tutorial dir {}", root.display()))?;
+        fs::create_dir_all(root.join(LIVE_SUBDIR))
+            .with_context(|| format!("failed to create tutorial live dir {}", root.display()))?;
         Ok(Self {
             root,
             write_lock: Mutex::new(()),
@@ -97,6 +100,42 @@ impl TutorialStore {
                 .with_context(|| format!("failed to delete {}", path.display()))?;
         }
         Ok(())
+    }
+
+    // --- live deep-dive cache (D-0008 §4.3) ---
+
+    /// Persist one live deep-dive turn under `live/<key>.json`.
+    pub fn save_turn_doc(&self, doc: &crate::tutorial::material::LiveTurnDoc) -> Result<()> {
+        let _g = self
+            .write_lock
+            .lock()
+            .expect("tutorial write lock poisoned");
+        let path = self.turn_path(&doc.key)?;
+        let body = serde_json::to_string_pretty(doc).context("serialise LiveTurnDoc")?;
+        fs::write(&path, body).with_context(|| format!("failed to write {}", path.display()))?;
+        Ok(())
+    }
+
+    /// Load a cached live deep-dive by key. Corrupt cache is an error;
+    /// absence is `None`.
+    pub fn load_turn_doc(
+        &self,
+        key: &str,
+    ) -> Result<Option<crate::tutorial::material::LiveTurnDoc>> {
+        let path = self.turn_path(key)?;
+        if !path.exists() {
+            return Ok(None);
+        }
+        let body = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let doc: crate::tutorial::material::LiveTurnDoc = serde_json::from_str(&body)
+            .with_context(|| format!("corrupt live cache at {}", path.display()))?;
+        Ok(Some(doc))
+    }
+
+    fn turn_path(&self, key: &str) -> Result<PathBuf> {
+        validate_game_id(key)?;
+        Ok(self.root.join(LIVE_SUBDIR).join(format!("{key}.json")))
     }
 }
 
@@ -208,6 +247,35 @@ mod tests {
         let doc = store.load_review("01JLEGACYGAME").unwrap().unwrap();
         assert_eq!(doc.overview, None);
         assert!(doc.turns.is_empty());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn live_turn_doc_round_trips_and_rejects_bad_keys() {
+        use crate::tutorial::material::{EngineNumbers, LiveTurnDoc, TurnDoc};
+        let root = temp_root("live");
+        let store = TutorialStore::new(root.clone()).unwrap();
+        let key = "20261010-153000-0-t5".to_string();
+        let doc = LiveTurnDoc {
+            key: key.clone(),
+            doc: TurnDoc {
+                junme: 5,
+                recommended: "dahai:5s".into(),
+                numbers: EngineNumbers {
+                    shanten: 1,
+                    ..Default::default()
+                },
+                explanation_zh: "讲解".into(),
+                headline: None,
+            },
+            model: Some("m".into()),
+            created_at: "2026-10-10T00:00:00Z".into(),
+        };
+        assert_eq!(store.load_turn_doc(&key).unwrap(), None);
+        store.save_turn_doc(&doc).unwrap();
+        assert_eq!(store.load_turn_doc(&key).unwrap().unwrap(), doc);
+        // Same path-safety rules as reviews.
+        assert!(store.load_turn_doc("../escape").is_err());
         std::fs::remove_dir_all(root).ok();
     }
 }

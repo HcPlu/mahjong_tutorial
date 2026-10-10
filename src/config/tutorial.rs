@@ -27,6 +27,26 @@ pub struct TutorialConfig {
     pub upload_consent: bool,
     /// Cloud LLM endpoint + credentials. See [`LlmConfig`].
     pub llm: LlmConfig,
+    /// In-game coach settings (M2, D-0008).
+    pub coach: CoachConfig,
+}
+
+/// In-game live coach settings (D-0008). The template layer is local and
+/// free; the deep-dive layer additionally requires
+/// [`TutorialConfig::outbound_allowed`] before anything leaves the
+/// machine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CoachConfig {
+    /// Coach tile master switch. **Off by default**: in-game guidance
+    /// must stay out of the way unless asked for (ROADMAP non-goals).
+    pub enabled: bool,
+    /// Template-layer lines per turn (v1 fixed at 1).
+    pub max_per_turn: u32,
+    /// Whether the tile shows the deep-dive button. Showing it does not
+    /// bypass `upload_consent` — the click errors with a consent hint
+    /// instead.
+    pub deep_dive_button: bool,
 }
 
 /// OpenAI-compatible endpoint credentials for the tutorial LLM.
@@ -76,6 +96,17 @@ impl Default for TutorialConfig {
             enabled: true,
             upload_consent: false,
             llm: LlmConfig::default(),
+            coach: CoachConfig::default(),
+        }
+    }
+}
+
+impl Default for CoachConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_per_turn: 1,
+            deep_dive_button: true,
         }
     }
 }
@@ -222,5 +253,39 @@ mod tests {
                 .request_timeout_ms,
             DEFAULT_REQUEST_TIMEOUT_MS
         );
+    }
+
+    /// The `[tutorial.coach]` sub-table round-trips and defaults to
+    /// disabled — a fresh install must never pop in-game guidance on.
+    #[test]
+    fn coach_defaults_off_and_round_trips() {
+        let d = CoachConfig::default();
+        assert!(!d.enabled, "coach must default to off");
+        assert_eq!(d.max_per_turn, 1);
+        assert!(d.deep_dive_button);
+
+        let mut cfg = AppConfig::default();
+        cfg.tutorial.coach = CoachConfig {
+            enabled: true,
+            max_per_turn: 2,
+            deep_dive_button: false,
+        };
+        let body = toml::to_string_pretty(&cfg).unwrap();
+        assert!(
+            body.contains("[tutorial.coach]"),
+            "expected a [tutorial.coach] table in:\n{body}"
+        );
+        let back: AppConfig = toml::from_str(&body).unwrap();
+        assert!(back.tutorial.coach.enabled);
+        assert_eq!(back.tutorial.coach.max_per_turn, 2);
+        assert!(!back.tutorial.coach.deep_dive_button);
+
+        // A legacy file with [tutorial] but no [tutorial.coach] parses
+        // with the disabled default.
+        let legacy = toml::from_str::<AppConfig>(
+            "[general]\nfirst_run_completed = true\n[tutorial]\nenabled = true\n",
+        )
+        .unwrap();
+        assert!(!legacy.tutorial.coach.enabled);
     }
 }

@@ -169,6 +169,21 @@ pub enum ReviewCoverage {
     All,
 }
 
+/// Persisted live deep-dive (D-0008): one [`TurnDoc`] plus its stamps,
+/// written under `<root>/live/<key>.json`. The wrapper exists because
+/// `TurnDoc` is also embedded in [`ReviewDoc`] and must not grow
+/// metadata fields of its own.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LiveTurnDoc {
+    /// Cache key: `"{session_key}-t{junme}"` (path-safe by construction).
+    pub key: String,
+    pub doc: TurnDoc,
+    pub model: Option<String>,
+    /// RFC 3339 UTC.
+    pub created_at: String,
+}
+
 // Manual on purpose: `num_players` defaults to 4-player mahjong, not
 // `u8::default()` — the only field here whose default is semantic.
 impl Default for ReviewMaterial {

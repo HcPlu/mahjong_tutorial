@@ -117,10 +117,18 @@ request_timeout_ms = 60000               # 离线批量，clamp 到 [5s, 300s]
   `provider.complete` → `parse_review_doc` → 盖 `created_at`/`model` 章 →
   `store.save_review`。失败任何一步都降级，不重试轰炸。
 - **实时讲解深讲层（M2，D-0008）**：设计见
-  [docs/design/live-coach.md](../../docs/design/live-coach.md)。后端落点
-  `live.rs`（订阅总线装配单巡 `TurnMaterial`，live 语境下 `actual` 填 bot
-  首选动作）；`upload.rs` 增单巡渲染、`download.rs` 增单巡校验、`store.rs`
-  增 `save_turn_doc`/`load_turn_doc`（`live/` 子目录）。模板层在前端，不经本模块。
+  [docs/design/live-coach.md](../../docs/design/live-coach.md)，**已实施**：
+  - `live.rs` 的 `drive_loop` 在 `lib.rs` 装配，订阅 `PostTrackerBus`
+    （StartGame 重置 session key、我方 Tsumo 计 junme）+
+    `BotResponseBus`；收到 bot 响应即锁 tracker 快照重算（不配对
+    AnalysisBus——两个并行订阅者有竞态，见 D-0012）。`actual` 填 bot
+    首选动作；candidates 优先取 `meta.show`（真 bot prob），无 show 卡
+    时回退引擎 top-3（归一化份额，同装配器语义）。
+  - `upload::build_turn_messages` / `download::parse_turn_doc` /
+    `store::{save_turn_doc, load_turn_doc}`（`live/<key>.json`，
+    `LiveTurnDoc` 包装；键 = `session_key + "-t" + junme`，
+    `session_key` = 本地时间戳+座位，字符集过 `validate_game_id`）。
+  - IPC `tutorial_explain_live`：缓存→consent→三区，失败降级 toast。
 - **自适应练习系统（M3，D-0009）**：设计见
   [docs/design/drills.md](../../docs/design/drills.md)。后端落点
   `src/tutorial/drills/`（题目 schema、生成管线、学习者模型、判题），判题

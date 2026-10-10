@@ -113,7 +113,8 @@ pub fn run() {
     // Same config-root placement as history; failure is fatal for
     // symmetry (a broken config dir would have failed history above).
     let tutorial_root = util::resolve_dir(Path::new("./tutorial"));
-    let tutorial = match tutorial::TutorialContext::new(tutorial_root.clone()) {
+    let live_coach = tutorial::LiveCoachHandle::default();
+    let tutorial = match tutorial::TutorialContext::new(tutorial_root.clone(), live_coach.clone()) {
         Ok(t) => std::sync::Arc::new(t),
         Err(e) => {
             error!(
@@ -142,6 +143,14 @@ pub fn run() {
     let analysis_tracker = game_tracker.clone();
     let analysis_bus_for_runner = analysis_bus.clone();
     let analysis_cache_for_runner = analysis_cache.clone();
+
+    // Live coach: post-tracker bookkeeping + bot responses, sharing the
+    // main tracker handle (numbers are re-derived from the snapshot, not
+    // paired across racing bus subscribers — see tutorial::live).
+    let live_post_rx = post_tracker_bus.subscribe();
+    let live_bot_rx = bot_response_bus.clone().subscribe();
+    let live_tracker = game_tracker.clone();
+    let live_coach_for_loop = live_coach.clone();
 
     let history_rx = mjai_bus.subscribe();
     let history_store_for_recorder = history_store.clone();
@@ -246,6 +255,13 @@ pub fn run() {
                     analysis_tracker,
                     analysis_bus_for_runner,
                     analysis_cache_for_runner,
+                ));
+
+                tauri::async_runtime::spawn(tutorial::live::drive_loop(
+                    live_post_rx,
+                    live_bot_rx,
+                    live_tracker,
+                    live_coach_for_loop,
                 ));
 
                 // History recorder. Subscribes to the shared MjaiBus and

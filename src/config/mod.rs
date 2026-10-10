@@ -22,7 +22,7 @@ pub use network::{GithubMirrorMode, NetworkConfig};
 pub use overlay::{OverlayConfig, TOP_N_MAX, TOP_N_MIN};
 pub use platform::{Platform, PlatformConfig};
 pub use proxy::ProxyConfig;
-pub use tutorial::{LlmConfig, TutorialConfig};
+pub use tutorial::{CoachConfig, LlmConfig, TutorialConfig};
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

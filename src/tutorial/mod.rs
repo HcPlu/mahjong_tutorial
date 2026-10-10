@@ -19,6 +19,7 @@
 pub mod assemble;
 pub mod context;
 pub mod download;
+pub mod live;
 pub mod material;
 pub mod pipeline;
 pub mod provider;
@@ -30,14 +31,15 @@ pub use assemble::{
     ScanResult,
 };
 pub use context::TutorialContext;
-pub use download::parse_review_doc;
+pub use download::{parse_review_doc, parse_turn_doc};
+pub use live::{drive_loop, LiveCoachHandle, LiveTurn};
 pub use material::{
-    CandidateNumbers, EngineNumbers, ReviewCoverage, ReviewDoc, ReviewMaterial, TurnContext,
-    TurnDoc, TurnMaterial,
+    CandidateNumbers, EngineNumbers, LiveTurnDoc, ReviewCoverage, ReviewDoc, ReviewMaterial,
+    TurnContext, TurnDoc, TurnMaterial,
 };
 pub use pipeline::{generate_review, GenerateOutcome};
 pub use provider::{
     ChatMessage, ChatRequest, ChatResponse, OpenAiCompatProvider, TutorialProvider,
 };
 pub use store::TutorialStore;
-pub use upload::{build_messages, outbound_allowed, redact};
+pub use upload::{build_messages, build_turn_messages, outbound_allowed, redact};
