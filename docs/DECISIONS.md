@@ -5,6 +5,13 @@
 
 ---
 
+## D-0010 · mortal-298k 本地 bot：包装入库，权重与机器配置留在 ignore
+
+- **背景**：教程需要高强度参照 bot（候选讲解与复盘"标准答案"的来源之一）。公开可下载的最强权重是 HuggingFace `VoidShine/mortal-298k`（Mortal v4 半庄模型，MAKA 平均 S+），但它是 130 MB 的 AGPL 二进制，且引擎路径因机器而异。
+- **决定**：`mjai_bot/mortal/` 的**包装代码入库**（bot.py 协议代理、manifest、单元测试、对局模拟器、README、HF 来源文件），根 `.gitignore` 的上游规则 `mjai_bot/mortal*` 收窄为三条例外（权重 `mortal_298k.pth`、自动生成的 `engine.toml`、测试输出 `game_log.jsonl`；`settings.toml` 已有通用忽略规则）。引擎本体（Mortal 克隆、venv、libriichi.pyd）永远在仓库外，AGPL 边界维持子进程隔离（bot.py ↔ mortal.py 仅 JSONL stdio）。
+- **理由**：可复现——README 记录完整构建/校验流程并以 sha256 锁定权重版本；权重不进 git（体积、AGPL、上游本就不分发权重）；机器路径不进 git（换机即失效且泄露本地布局）。
+- **代价**：换机器需按 bot README 重做一次性构建；权重升级需人工下载并同步 sha256。
+
 ## D-0009 · 练习系统 = 引擎参数化题库 + 学习者模型自适应选题，判题以本地引擎为准
 
 - **背景**：教学模块需要定型。市面已有两类形态：Mahjong Efficiency Trainer（itch.io）——交互好但纯牌效率，无难度体系、无自适应、无解释；nagchan 何切練習系列——场况完整、有作者说理，但人工精选、不可交互、不因人施教。本 fork 的差异化优势：`analysis` 引擎既可出题又可阅卷、`BotResponse` 候选可作参照、LLM 可把数字讲成人话。

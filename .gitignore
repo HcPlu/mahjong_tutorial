@@ -45,8 +45,10 @@ dist/
 runtime/*
 !runtime/.gitkeep
 
-# util
-mjai_bot/mortal*
+# mortal-298k local bot: track the wrapper code, ignore weights & machine-local files
+mjai_bot/mortal/mortal_298k.pth
+mjai_bot/mortal/engine.toml
+mjai_bot/mortal/game_log.jsonl
 
 # Locally-built bot release artifacts
 mortal.zip

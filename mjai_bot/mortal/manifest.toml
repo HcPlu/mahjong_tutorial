@@ -1,0 +1,20 @@
+manifest_version = 1
+
+[bot]
+name = "mortal-298k"
+display = "Mortal (mortal-298k)"
+description = "VoidShine/mortal-298k — S+-tier 4p hanchan Mortal v4 checkpoint, run locally through the official mortal.py engine."
+version = "0.1.0"
+supported_modes = ["4p"]
+
+[settings.python_path]
+type = "string"
+label = "Engine Python"
+default = ""
+help = "Path to the venv Python that has torch installed (the Mortal engine's own environment). See the bot README for the one-time setup."
+
+[settings.mortal_dir]
+type = "string"
+label = "Mortal Engine Directory"
+default = ""
+help = "Directory containing mortal.py + libriichi.pyd (the local Mortal repository clone)."
