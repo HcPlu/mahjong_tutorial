@@ -80,6 +80,19 @@ pub fn parse_review_doc(content: &str, material: &ReviewMaterial) -> Result<Revi
     // Authoritative identity comes from the material, never the reply.
     doc.game_id = material.game_id.clone();
     doc.seat = material.seat;
+
+    // A reply that explains turns must open with the game-level summary
+    // (part of the prompt contract since D-0012). Old caches without the
+    // field still load — this check only runs on fresh replies.
+    if !doc.turns.is_empty() {
+        let ok = doc
+            .overview
+            .as_deref()
+            .is_some_and(|s| !s.trim().is_empty());
+        if !ok {
+            bail!("overview missing or empty — the reply must open with a game-level summary");
+        }
+    }
     Ok(doc)
 }
 
@@ -126,15 +139,20 @@ mod tests {
                         avg_score: Some(5200),
                     },
                 }],
+                context: None,
             }],
         }
     }
 
-    fn reply_json(numbers: &str) -> String {
+    fn reply_json(numbers: &str, overview: Option<&str>) -> String {
         // Identity fields are deliberately wrong ("whatever" / seat 9) to
         // prove the parser takes them from the material, not the reply.
+        let overview = match overview {
+            Some(o) => format!("\"overview\":\"{o}\","),
+            None => String::new(),
+        };
         format!(
-            r#"{{"game_id":"whatever","seat":9,"turns":[{{"junme":6,"recommended":"dahai:5s","numbers":{numbers},"explanation_zh":"切5s后听牌，待牌含dora 4s，进攻价值高。","headline":"进攻"}}]}}"#
+            r#"{{"game_id":"whatever","seat":9,{overview}"turns":[{{"junme":6,"recommended":"dahai:5s","numbers":{numbers},"explanation_zh":"切5s后听牌，待牌含dora 4s，进攻价值高。","headline":"进攻"}}]}}"#
         )
     }
 
@@ -143,15 +161,33 @@ mod tests {
         let raw = format!(
             "好的，复盘如下：\n{}\n希望对你有帮助",
             reply_json(
-                "{\"shanten\":0,\"win_rate\":0.42,\"deal_in_rate\":0.09,\"avg_score\":5200}"
+                "{\"shanten\":0,\"win_rate\":0.42,\"deal_in_rate\":0.09,\"avg_score\":5200}",
+                Some("前半程推进顺利，第6巡起听牌后打法偏保守。")
             )
         );
         let doc = parse_review_doc(&raw, &material()).unwrap();
         assert_eq!(doc.game_id, "01JTESTGAME");
         assert_eq!(doc.seat, 2);
+        assert_eq!(
+            doc.overview.as_deref(),
+            Some("前半程推进顺利，第6巡起听牌后打法偏保守。")
+        );
         assert_eq!(doc.turns.len(), 1);
         assert_eq!(doc.turns[0].recommended, "dahai:5s");
         assert!(doc.turns[0].explanation_zh.contains("切5s"));
+    }
+
+    #[test]
+    fn rejects_missing_overview() {
+        let raw = reply_json(
+            "{\"shanten\":0,\"win_rate\":0.42,\"deal_in_rate\":0.09,\"avg_score\":5200}",
+            None,
+        );
+        let err = parse_review_doc(&raw, &material()).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("overview"),
+            "unexpected error: {err:#}"
+        );
     }
 
     #[test]
@@ -159,6 +195,7 @@ mod tests {
         // The LLM "improved" 0.42 to 0.55 — the core hallucination case.
         let raw = reply_json(
             "{\"shanten\":0,\"win_rate\":0.55,\"deal_in_rate\":0.09,\"avg_score\":5200}",
+            Some("总评"),
         );
         let err = parse_review_doc(&raw, &material()).unwrap_err();
         let msg = format!("{err:#}");
@@ -170,6 +207,7 @@ mod tests {
         // Label not offered by the material.
         let raw = reply_json(
             "{\"shanten\":0,\"win_rate\":0.42,\"deal_in_rate\":0.09,\"avg_score\":5200}",
+            Some("总评"),
         )
         .replace("dahai:5s", "reach");
         assert!(parse_review_doc(&raw, &material())
@@ -178,7 +216,7 @@ mod tests {
             .contains("not one of the offered candidates"));
 
         // Zero turns vs one material turn.
-        let empty = "{\"game_id\":\"x\",\"seat\":0,\"turns\":[]}";
+        let empty = "{\"game_id\":\"x\",\"seat\":0,\"turns\":[],\"overview\":\"x\"}";
         assert!(parse_review_doc(empty, &material())
             .unwrap_err()
             .to_string()

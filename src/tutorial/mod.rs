@@ -16,15 +16,18 @@
 //! the M1 review pipeline (IPC commands, frontend) is built *on top of*
 //! these seams later.
 
+pub mod assemble;
 pub mod download;
 pub mod material;
 pub mod provider;
 pub mod store;
 pub mod upload;
 
+pub use assemble::{build_review_material, scan_decisions, DecisionPoint, ScanResult};
 pub use download::parse_review_doc;
 pub use material::{
-    CandidateNumbers, EngineNumbers, ReviewDoc, ReviewMaterial, TurnDoc, TurnMaterial,
+    CandidateNumbers, EngineNumbers, ReviewCoverage, ReviewDoc, ReviewMaterial, TurnContext,
+    TurnDoc, TurnMaterial,
 };
 pub use provider::{
     ChatMessage, ChatRequest, ChatResponse, OpenAiCompatProvider, TutorialProvider,

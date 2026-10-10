@@ -52,12 +52,16 @@ pub fn build_messages(material: &ReviewMaterial) -> Vec<ChatMessage> {
 fn system_prompt() -> String {
     // The output contract mirrors `material::ReviewDoc`'s serde shape.
     // If that type changes, change this string in the same commit.
-    "你是麻将复盘教练。用户会给出一份对局数据，其中所有数字（向听 shanten、\
-     和率 win_rate、铳率 deal_in_rate、期望打点 avg_score）都由本地分析引擎预先算好。\
-     你的职责：为每一巡写一段面向初中级玩家的中文讲解（解释关键取舍，60-120字），\
-     并推荐一条候选路线。铁律：数字必须原样引用，禁止计算、换算或修改任何数字。\
+    "你是麻将复盘教练，面向初中级玩家教学。输入的每个决策点都附有本地分析引擎预先算好的数字\
+     （向听 shanten 为整数、和率 win_rate 与铳率 deal_in_rate 为0-1小数、期望打点 avg_score 为整数点数）\
+     和局况（风局、本场、分数、已立直家、宝牌指示牌）。你的职责：\n\
+     1. overview：2-3句总评本局整体表现（速度、防守、立直时机），可引用具体巡号；\n\
+     2. 每巡给出 headline（一句话结论，不超过20字）与 explanation_zh（60-120字讲解：解释关键取舍，\
+     对比实际选择与引擎候选，指出更好的打法及其代价，教学口吻）；\n\
+     3. recommended：从该巡候选中选一条最优路线。\n\
+     铁律：所有数字必须原样引用，禁止计算、换算或修改任何数字；不得推荐候选之外的打法。\
      只输出一个 JSON 对象，不要输出其他文字，结构如下：\n\
-     {\"game_id\": \"<原样>\", \"seat\": <原样>, \"turns\": [{\"junme\": <巡号>, \
+     {\"overview\": \"<总评>\", \"game_id\": \"<原样>\", \"seat\": <原样>, \"turns\": [{\"junme\": <巡号>, \
      \"recommended\": \"<候选label>\", \"numbers\": {\"shanten\": <int>, \
      \"win_rate\": <float|null>, \"deal_in_rate\": <float|null>, \"avg_score\": <int|null>}, \
      \"explanation_zh\": \"<讲解>\", \"headline\": \"<一句话结论|null>\"}]}\n\
@@ -75,25 +79,55 @@ fn render_material(material: &ReviewMaterial) -> String {
         material.turns.len()
     ));
     for turn in &material.turns {
+        out.push_str(&render_turn(turn));
+    }
+    out
+}
+
+/// Render one decision point. Shared by the whole-game review prompt and
+/// the live coach's single-turn prompt (D-0008) so both narrate the same
+/// input shape.
+pub(crate) fn render_turn(turn: &crate::tutorial::material::TurnMaterial) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "\n=== 巡 {} ===\n手牌: {} 摸: {}\n实际选择: {}\n",
+        turn.junme,
+        turn.tehai.join(" "),
+        turn.draw,
+        turn.actual
+    ));
+    if let Some(ctx) = &turn.context {
         out.push_str(&format!(
-            "\n=== 巡 {} ===\n手牌: {} 摸: {}\n实际选择: {}\n候选:\n",
-            turn.junme,
-            turn.tehai.join(" "),
-            turn.draw,
-            turn.actual
+            "局况: {}{}局{}本场 分数[{}] 已立直家[{}] 宝牌指示[{}] 我方已立直:{}\n",
+            ctx.bakaze,
+            ctx.kyoku,
+            ctx.honba,
+            ctx.scores
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+            ctx.riichi_seats
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+            ctx.dora_indicators.join(" "),
+            if ctx.our_riichi { "是" } else { "否" },
         ));
-        for (i, cand) in turn.candidates.iter().enumerate() {
-            out.push_str(&format!(
-                "  {}. {} (p={}) 向听{} 和率{} 铳率{} 打点{}\n",
-                i + 1,
-                cand.label,
-                cand.prob,
-                cand.numbers.shanten,
-                fmt_opt(cand.numbers.win_rate),
-                fmt_opt(cand.numbers.deal_in_rate),
-                fmt_opt(cand.numbers.avg_score),
-            ));
-        }
+    }
+    out.push_str("候选:\n");
+    for (i, cand) in turn.candidates.iter().enumerate() {
+        out.push_str(&format!(
+            "  {}. {} (p={}) 向听{} 和率{} 铳率{} 打点{}\n",
+            i + 1,
+            cand.label,
+            cand.prob,
+            cand.numbers.shanten,
+            fmt_opt(cand.numbers.win_rate),
+            fmt_opt(cand.numbers.deal_in_rate),
+            fmt_opt(cand.numbers.avg_score),
+        ));
     }
     out
 }
@@ -111,7 +145,7 @@ fn fmt_opt<T: std::fmt::Debug>(v: Option<T>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tutorial::material::{CandidateNumbers, EngineNumbers, TurnMaterial};
+    use crate::tutorial::material::{CandidateNumbers, EngineNumbers, TurnContext, TurnMaterial};
 
     fn sample_material() -> ReviewMaterial {
         ReviewMaterial {
@@ -152,6 +186,15 @@ mod tests {
                         },
                     },
                 ],
+                context: Some(TurnContext {
+                    bakaze: "S".into(),
+                    kyoku: 2,
+                    honba: 1,
+                    scores: vec![25_000, 18_000, 32_000, 25_000],
+                    riichi_seats: vec![3],
+                    dora_indicators: vec!["2m".into()],
+                    our_riichi: false,
+                }),
             }],
         }
     }
@@ -173,7 +216,13 @@ mod tests {
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].role, "system");
         // The JSON contract must name the fields download parses.
-        for key in ["explanation_zh", "recommended", "numbers", "win_rate"] {
+        for key in [
+            "explanation_zh",
+            "recommended",
+            "numbers",
+            "win_rate",
+            "overview",
+        ] {
             assert!(msgs[0].content.contains(key), "system prompt lacks {key}");
         }
         assert_eq!(msgs[1].role, "user");
@@ -185,5 +234,8 @@ mod tests {
         assert!(!user.contains("HcPlu"));
         // Numbers round-trip-render (0.42 not 0.42000...).
         assert!(user.contains("和率0.42"));
+        // Situational context rides along (no identity in it either).
+        assert!(user.contains("局况:"));
+        assert!(user.contains("已立直家[3]"));
     }
 }

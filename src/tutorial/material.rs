@@ -37,11 +37,42 @@ pub struct EngineNumbers {
 #[serde(default)]
 pub struct CandidateNumbers {
     pub label: String,
-    /// Engine/bot preference for this candidate, `0.0..=1.0`. Ranked
+    /// Engine preference share for this candidate, `0.0..=1.0`. Ranked
     /// input to the explanation, not something the LLM produces.
+    ///
+    /// Semantics depend on the producer: the review assembler fills this
+    /// with the candidate's normalized `mixed_waits_score` share among the
+    /// candidates it chose to show (an engine-derived ranking hint, *not*
+    /// a bot's action probability — D-0012); the live coach fills it from
+    /// `meta.show` probs, which are genuine bot policy probabilities.
     pub prob: f64,
     /// The engine numbers attached to this candidate line.
     pub numbers: EngineNumbers,
+}
+
+/// Situational frame of one decision point — input-only context so the
+/// LLM can speak to the game situation (round, scores, riichi threats,
+/// dora). Carries no identity data and is never validated on the way
+/// back from the cloud (there are no numbers in here the LLM could
+/// misquote into the checked fields).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TurnContext {
+    /// Round wind as mjai char (`"E"`..=`"N"`).
+    pub bakaze: String,
+    /// 1..=4.
+    pub kyoku: u8,
+    pub honba: u8,
+    /// Points per seat, seat order.
+    pub scores: Vec<i32>,
+    /// Seats that declared riichi (any opponent here means defence is on
+    /// the table for this decision).
+    pub riichi_seats: Vec<u8>,
+    /// Dora indicator tiles (mjai).
+    pub dora_indicators: Vec<String>,
+    /// Whether the reviewed seat is in riichi at this decision (declared
+    /// this turn or earlier).
+    pub our_riichi: bool,
 }
 
 /// One decision point (junme) of the reviewed seat, as handed to the LLM.
@@ -55,11 +86,17 @@ pub struct TurnMaterial {
     /// The tile just drawn (also the last entry of `tehai`).
     pub draw: String,
     /// What the player actually did, same label vocabulary as
-    /// [`CandidateNumbers::label`].
+    /// [`CandidateNumbers::label`]. **Semantics depend on the producer**:
+    /// the review assembler fills the *student's* actual discard; the
+    /// live coach fills the *bot's* first-choice action (the live turn is
+    /// explained before the student has acted — D-0008).
     pub actual: String,
     /// Ranked candidates with their engine numbers. Empty when no
     /// engine output is available for this turn.
     pub candidates: Vec<CandidateNumbers>,
+    /// Situational frame (round, scores, riichi threats, dora).
+    /// Input-only; never validated on the way back.
+    pub context: Option<TurnContext>,
 }
 
 /// Teaching material for one game, one seat — the input side of the
@@ -115,7 +152,21 @@ pub struct ReviewDoc {
     pub model: Option<String>,
     /// Creation time, RFC 3339 UTC.
     pub created_at: String,
+    /// Game-level summary (2-3 sentences) the LLM opens with. Required
+    /// in fresh replies whenever `turns` is non-empty; `None` only in
+    /// caches written before the field existed (serde default).
+    pub overview: Option<String>,
     pub turns: Vec<TurnDoc>,
+}
+
+/// Which decision points a review covers (D-0012). `Key` keeps the
+/// turns picked by the deterministic key-turn rules (deeper, cheaper);
+/// `All` explains every own discard decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewCoverage {
+    Key,
+    All,
 }
 
 // Manual on purpose: `num_players` defaults to 4-player mahjong, not

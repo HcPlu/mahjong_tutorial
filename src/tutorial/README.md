@@ -57,14 +57,39 @@ ReviewMaterial（讲解原料：analysis 引擎的数字 + 牌面快照）
 
 | 类型 | 位置 | 角色 |
 |---|---|---|
-| `ReviewMaterial` / `TurnMaterial` / `CandidateNumbers` / `EngineNumbers` | `material.rs` | 输入侧：讲解原料 |
-| `ReviewDoc` / `TurnDoc` | `material.rs` | 输出侧：LLM 讲解 + 原样数字（与输入镜像） |
+| `ReviewMaterial` / `TurnMaterial` / `TurnContext` / `CandidateNumbers` / `EngineNumbers` / `ReviewCoverage` | `material.rs` | 输入侧：讲解原料（`TurnContext` 为仅输入侧的局况，不参与回显校验） |
+| `ReviewDoc` / `TurnDoc` | `material.rs` | 输出侧：LLM 讲解 + 原样数字（与输入镜像；`overview` 为 D-0012 新增总评，旧缓存缺省可读） |
+| `build_review_material` / `scan_decisions` / `DecisionPoint` | `assemble.rs` | M1 装配器：history 事件流 → tracker 重放 × analysis 重算 → 原料 |
 | `ChatMessage` / `ChatRequest` / `ChatResponse` / `TutorialProvider` | `provider.rs` | LLM 抽象缝（D-0004） |
 | `TutorialConfig` / `LlmConfig` | `src/config/tutorial.rs` | `[tutorial]` 配置节（含 consent） |
 
 注意：`upload.rs` 的 system prompt 里手写着 JSON 输出契约（字段名与
 `ReviewDoc` 的 serde 形状一致）。**改 `ReviewDoc` 字段时必须同步改那段
 prompt 文本**——两处没有编译期联动，靠这条 README 约束。
+
+## 装配器（`assemble.rs`，D-0012）
+
+`scan_decisions(events, seat)` 用私有 `GameTracker` 逐事件重放，在每个
+**我方摸牌→切牌窗口**产出 `DecisionPoint`。要点：
+
+- **StartGame 座位注入**：tracker 的观察视角取自 `StartGame.id`；历史流
+  录制时若未标视角（id 为 None），装配器克隆该事件注入 `id = seat` 再喂，
+  否则快照手牌全是 `"?"`。
+- **junme 口径**：我方第 N 次摸牌（含杠后岭上），与 live 深讲同口径；
+  不用快照 `turn_count`。
+- **候选集**：`hand14.maintain` 前 3 ∪ 实际切牌 ∪ `best_defence_discard`
+  （后两者仅当存在于 maintain——否则没有可引用的引擎数字），cap 5。
+  `maintain` 为空的巡（如恰好完整的 14 张形）整巡跳过。
+- **`prob` 语义**：展示候选内 `mixed_waits_score` 的归一化份额——引擎
+  衍生的排序提示，**不是** bot 动作概率（live 深讲才用 bot 的 prob）。
+- **数字映射**（`engine_numbers`，live/review 共用）：
+  `shanten ← 候选 result.shanten`；`win_rate ← avg_agari_rate/100`；
+  `deal_in_rate ← mixed_risk[切牌]/100`（引擎内是百分数）；
+  `avg_score ← riichi_point>0 ? round : (dama_point>0 ? round : None)`。
+- **关键巡规则**（`is_key_turn`，纯引擎数字、表驱动测试）：①实际切牌
+  不在 maintain 前 3 ②对手立直且我方 ≤1 向听 ③该局首个可切听巡
+  ④攻防最优切牌不同且均在候选。`ReviewCoverage::Key` 取关键巡 cap 12，
+  `All` 全部决策巡。
 
 ## 配置示例
 

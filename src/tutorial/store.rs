@@ -139,6 +139,7 @@ mod tests {
             seat: 2,
             model: Some("test-model".into()),
             created_at: "2026-10-10T00:00:00Z".into(),
+            overview: Some("总评：推进顺利，防守偏保守。".into()),
             turns: vec![TurnDoc {
                 junme: 6,
                 recommended: "dahai:5s".into(),
@@ -186,6 +187,27 @@ mod tests {
                 "{bad:?} should be rejected"
             );
         }
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    /// Caches written before `overview` existed must keep loading (D-0012
+    /// field addition is serde-default backward compatible).
+    #[test]
+    fn loads_pre_overview_cache() {
+        let root = temp_root("legacy");
+        let store = TutorialStore::new(root.clone()).unwrap();
+        let legacy = r#"{
+            "game_id": "01JLEGACYGAME",
+            "seat": 0,
+            "model": null,
+            "created_at": "2026-01-01T00:00:00Z",
+            "turns": []
+        }"#;
+        let path = root.join(REVIEWS_SUBDIR).join("01JLEGACYGAME.json");
+        std::fs::write(&path, legacy).unwrap();
+        let doc = store.load_review("01JLEGACYGAME").unwrap().unwrap();
+        assert_eq!(doc.overview, None);
+        assert!(doc.turns.is_empty());
         std::fs::remove_dir_all(root).ok();
     }
 }
