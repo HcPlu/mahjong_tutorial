@@ -12,10 +12,12 @@ secrets/
 CLAUDE.md
 claude*.md
 *mcp.json
-AGENTS.md
-agent*.md
 .agents
 .codex
+
+# NOTE: AGENTS.md is TRACKED in this fork (it is the governance file for AI
+# coding agents, see AGENTS.md). Upstream ignores it as private memory; do not
+# re-add it here.
 
 # Reference
 reference
