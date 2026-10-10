@@ -53,6 +53,11 @@ pub struct ChatRequest {
     pub messages: Vec<ChatMessage>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    /// OpenAI-style reasoning-effort hint (`"low"`/`"medium"`/`"high"`).
+    /// Only serialized when set — providers without the field never see
+    /// it. `OpenAiCompatProvider::new` stamps it in from
+    /// [`crate::config::LlmConfig`] so callers don't repeat themselves.
+    pub reasoning_effort: Option<String>,
 }
 
 /// Token accounting, when the provider reports it (cost awareness).
@@ -99,6 +104,7 @@ pub struct OpenAiCompatProvider {
     key: String,
     model: String,
     timeout: std::time::Duration,
+    reasoning_effort: Option<String>,
     http: reqwest::Client,
 }
 
@@ -111,6 +117,7 @@ impl OpenAiCompatProvider {
             key: cfg.effective_api_key(),
             model: cfg.model.trim().to_string(),
             timeout: cfg.effective_timeout(),
+            reasoning_effort: cfg.reasoning_effort.clone(),
             http: reqwest::Client::new(),
         })
     }
@@ -129,6 +136,10 @@ impl TutorialProvider for OpenAiCompatProvider {
             messages: &req.messages,
             temperature: req.temperature,
             max_tokens: req.max_tokens,
+            reasoning_effort: req
+                .reasoning_effort
+                .as_deref()
+                .or(self.reasoning_effort.as_deref()),
         };
         let resp = self
             .http
@@ -192,6 +203,8 @@ struct OpenAiChatRequest<'a> {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<&'a str>,
 }
 
 #[derive(Deserialize)]

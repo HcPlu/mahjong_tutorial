@@ -67,7 +67,7 @@ fn turn_system_prompt() -> String {
      局况与候选切牌。你的职责：解释 bot 首选（实际选择）为什么好——headline 一句话结论（不超过20字）\
      与 explanation_zh（60-120字讲解：取舍逻辑、与其他候选的对比、需要注意的局势）。\
      recommended 填 bot 首选。\n\
-     铁律：所有数字必须原样引用，禁止计算、换算或修改；不得推荐候选之外的打法。\
+     铁律：numbers 字段的数字必须逐字段原样复制；讲解正文里引用数字时用百分数保留1-2位小数，禁止编造任何不在输入中的数字；不得推荐候选之外的打法。\
      只输出一个 JSON 对象，不要输出其他文字：\n\
      {\"junme\": <巡号>, \"recommended\": \"<候选label>\", \"numbers\": {\"shanten\": <int>, \
      \"win_rate\": <float|null>, \"deal_in_rate\": <float|null>, \"avg_score\": <int|null>}, \
@@ -86,7 +86,7 @@ fn system_prompt() -> String {
      2. 每巡给出 headline（一句话结论，不超过20字）与 explanation_zh（60-120字讲解：解释关键取舍，\
      对比实际选择与引擎候选，指出更好的打法及其代价，教学口吻）；\n\
      3. recommended：从该巡候选中选一条最优路线。\n\
-     铁律：所有数字必须原样引用，禁止计算、换算或修改任何数字；不得推荐候选之外的打法。\
+     铁律：numbers 字段的数字必须逐字段原样复制；讲解正文里引用数字时用百分数保留1-2位小数（如0.03624写作3.6%），禁止编造任何不在输入中的数字；不得推荐候选之外的打法。\
      只输出一个 JSON 对象，不要输出其他文字，结构如下：\n\
      {\"overview\": \"<总评>\", \"game_id\": \"<原样>\", \"seat\": <原样>, \"turns\": [{\"junme\": <巡号>, \
      \"recommended\": \"<候选label>\", \"numbers\": {\"shanten\": <int>, \

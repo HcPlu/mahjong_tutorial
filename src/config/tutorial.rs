@@ -75,6 +75,15 @@ pub struct LlmConfig {
     /// Clamped by [`Self::effective_timeout`]; the raw value is stored so
     /// the UI round-trips exactly what the user typed.
     pub request_timeout_ms: u32,
+    /// OpenAI-style reasoning-effort hint (`"low"` / `"medium"` /
+    /// `"high"`), forwarded verbatim when set. Reasoning-style models
+    /// (GLM-5.x etc.) otherwise think for minutes on tutorial prompts —
+    /// wasteful here, because every number the model narrates is already
+    /// computed locally and cross-checked on the way back. `"low"` skips
+    /// the thinking pass on GLM flash tiers. Absent → not sent (providers
+    /// without the field stay untouched).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 /// Default per-request timeout. LLM reviews are batch calls that
@@ -118,6 +127,7 @@ impl Default for LlmConfig {
             api_key: String::new(),
             model: String::new(),
             request_timeout_ms: DEFAULT_REQUEST_TIMEOUT_MS,
+            reasoning_effort: None,
         }
     }
 }

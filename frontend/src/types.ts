@@ -230,6 +230,8 @@ export type TutorialLlmConfig = {
   api_key: string
   model: string
   request_timeout_ms: number
+  /** OpenAI-style hint ('low'|'medium'|'high'); absent = not sent. */
+  reasoning_effort?: string | null
 }
 
 export type TutorialCoachConfig = {

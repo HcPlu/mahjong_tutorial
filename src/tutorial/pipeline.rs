@@ -16,15 +16,17 @@ use crate::tutorial::provider::{ChatRequest, OpenAiCompatProvider, TutorialProvi
 use crate::tutorial::store::TutorialStore;
 use crate::tutorial::upload;
 
-/// Turns per chat request. Caps output length per call so the JSON
-/// contract survives providers with modest completion limits; `All`
-/// coverage on a long game simply runs more chunks.
-const TURNS_PER_REQUEST: usize = 15;
+/// Turns per chat request. Measured against the real GLM endpoint on a
+/// full-length game: one 15-turn chunk makes reasoning-style models
+/// (thinking + JSON from the same budget) time out or starve the content
+/// to empty on the free tier. Six turns keeps every request inside a
+/// minute and makes transient 429s cheap to retry.
+const TURNS_PER_REQUEST: usize = 6;
 const TEMPERATURE: f32 = 0.2;
-/// Reasoning-style models (GLM-4.7 etc.) spend invisible thinking tokens
-/// from the same budget before writing the JSON — measured against the
-/// real endpoint, 4000 starves the content to empty on a 6-turn prompt.
-const MAX_TOKENS_PER_REQUEST: u32 = 8000;
+/// Headroom for reasoning models: thinking tokens come out of the same
+/// budget before the JSON body — GLM-5.x reasoning needs a lot of it
+/// (measured against the real endpoint; unused budget is not billed).
+const MAX_TOKENS_PER_REQUEST: u32 = 16000;
 
 #[derive(Debug)]
 pub struct GenerateOutcome {
@@ -87,6 +89,9 @@ pub async fn generate_review(
                 messages: upload::build_messages(&sub),
                 temperature: Some(TEMPERATURE),
                 max_tokens: Some(MAX_TOKENS_PER_REQUEST),
+                // From-config hint (e.g. GLM-5.x thinking control); unset
+                // → not sent.
+                reasoning_effort: cfg.llm.reasoning_effort.clone(),
             })
             .await
             .context("LLM request failed — degrading to a numbers-only review")?;

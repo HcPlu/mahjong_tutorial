@@ -91,6 +91,14 @@ prompt 文本**——两处没有编译期联动，靠这条 README 约束。
   ④攻防最优切牌不同且均在候选。`ReviewCoverage::Key` 取关键巡 cap 12，
   `All` 全部决策巡。
 
+## 调试工具（`tutorial-debug`）
+
+`cargo run --bin tutorial_debug -- --game latest [--coverage key|all] [--refresh] [--json]`
+—— headless 驱动与 UI 完全相同的管线（同一份 config.toml、同一个 history/tutorial
+存储目录），用于无 GUI 验证与排查。生成的讲解写入共享缓存，UI 打开同一局直接显示。
+实测参数基线（2026-10，智谱）：`glm-5.3-flashx`、6 巡/批、max_tokens 16000 →
+12 巡关键档约 110 秒、缓存命中微秒级。
+
 ## 配置示例
 
 ```toml
@@ -99,10 +107,12 @@ enabled = true          # 功能总开关
 upload_consent = false  # 隐私同意：允许（脱敏后的）牌局数据出网上云
 
 [tutorial.llm]
-base_url = "https://api.deepseek.com/v1"  # 含版本段；本地 llama-server 用 http://127.0.0.1:8080/v1
-api_key  = ""                            # 或环境变量 TUTORIAL_LLM_API_KEY
-model    = "deepseek-chat"
-request_timeout_ms = 60000               # 离线批量，clamp 到 [5s, 300s]
+base_url = "https://open.bigmodel.cn/api/paas/v4"  # 含版本段；本地 llama-server 用 http://127.0.0.1:8080/v1
+api_key  = ""                                      # 或环境变量 TUTORIAL_LLM_API_KEY
+model    = "glm-5.3-flashx"
+request_timeout_ms = 300000          # 离线批量，clamp 到 [5s, 300s]
+# reasoning_effort = "low"           # 可选：思考型模型(GLM-5.3-flash等)的思考开关；
+                                     #   不设=不发送。教程场景数字已本地算好，low 足够且快一个量级
 ```
 
 ## 扩展方法
