@@ -29,6 +29,7 @@ async fn main() {
     let mut coverage = ReviewCoverage::Key;
     let mut refresh = false;
     let mut json = false;
+    let mut inspect: Option<u32> = None;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -43,21 +44,17 @@ async fn main() {
             }
             "--refresh" => refresh = true,
             "--json" => json = true,
+            "--inspect" => {
+                inspect = match args.next().map(|v| v.parse::<u32>()) {
+                    Some(Ok(n)) => Some(n),
+                    _ => usage("--inspect needs a junme number"),
+                };
+            }
             other => usage(&format!("unknown argument {other:?}")),
         }
     }
 
     let (cfg, _path) = load_config(None);
-    if !cfg.tutorial.outbound_allowed() {
-        eprintln!(
-            "outbound not allowed: enabled={} consent={} llm_configured={} \
-             (set [tutorial] in config.toml and/or TUTORIAL_LLM_API_KEY)",
-            cfg.tutorial.enabled,
-            cfg.tutorial.upload_consent,
-            cfg.tutorial.llm.is_configured(),
-        );
-        std::process::exit(2);
-    }
 
     let history = HistoryStore::new(resolve_dir(Path::new("./history")))
         .expect("open history store (run next to the app so ./history resolves)");
@@ -93,6 +90,77 @@ async fn main() {
         .get_events(&record.id)
         .expect("read event stream")
         .unwrap_or_else(|| usage("game has no event stream"));
+
+    // --inspect <junme>: dump the engine's raw candidate table for one
+    // decision point (what the UI's candidate chart renders). No network.
+    if let Some(junme) = inspect {
+        let scan = akagi::tutorial::scan_decisions(&events, seat).expect("scan");
+        let dp = scan
+            .decisions
+            .iter()
+            .find(|d| d.junme == junme)
+            .unwrap_or_else(|| {
+                usage(&format!(
+                    "junme {junme} not found (game has {} decisions; max junme {})",
+                    scan.decisions.len(),
+                    scan.decisions.last().map(|d| d.junme).unwrap_or(0)
+                ))
+            });
+        let m = dp.material.clone();
+        println!(
+            "junme {} actual {} tehai {}",
+            m.junme,
+            m.actual,
+            m.tehai.join(" ")
+        );
+        let snap =
+            akagi::tutorial::assemble::replay_snapshot_at(&events, seat, dp.event_index as usize)
+                .expect("replay")
+                .expect("snapshot");
+        let info = akagi::analysis::snapshot_adapter::to_player_info(&snap, seat).expect("info");
+        let result = akagi::analysis::analyze(&info);
+        println!(
+            "engine maintain top-6: (discard shanten waits_total score agari% riichi_pt dama_pt)"
+        );
+        for c in result
+            .hand14
+            .as_ref()
+            .expect("hand14")
+            .maintain
+            .iter()
+            .take(6)
+        {
+            println!(
+                "  {:>4}  shanten={}  waits={:<3}  score={:.3}  agari={:.1}%  riichi={:.0}  dama={:.0}",
+                c.discard,
+                c.result.shanten,
+                c.result.waits_total,
+                c.result.mixed_waits_score,
+                c.result.avg_agari_rate,
+                c.result.riichi_point,
+                c.result.dama_point,
+            );
+        }
+        println!(
+            "best_attack={:?} best_defence={:?} mixed_risk_len={}",
+            result.best_attack_discard,
+            result.best_defence_discard,
+            result.mixed_risk.len()
+        );
+        return;
+    }
+
+    // Network path from here on — gate before the first request.
+    if !cfg.tutorial.outbound_allowed() {
+        eprintln!(
+            "outbound not allowed: enabled={} consent={} llm_configured={} \
+             (set [tutorial] in config.toml and/or TUTORIAL_LLM_API_KEY)",
+            cfg.tutorial.enabled,
+            cfg.tutorial.upload_consent,
+            cfg.tutorial.llm.is_configured(),
+        );
+        std::process::exit(2);
+    }
 
     let started = std::time::Instant::now();
     let outcome = generate_review(

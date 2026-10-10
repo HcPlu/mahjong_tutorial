@@ -230,7 +230,8 @@
     "no_decision_here": "No discard decision at this point — jump with a turn chip above.",
     "explanation": "Coaching",
     "explanation_missing": "No explanation for this turn under the current coverage — switch to All turns or regenerate.",
-    "explanation_need_generate": "Generate the coaching to see the AI explanation for this turn."
+    "explanation_need_generate": "Generate the coaching to see the AI explanation for this turn.",
+    "score": "Score"
   },
   "coach": {
     "disabled": "Coach is off — enable it in Settings → AI Tutorial.",

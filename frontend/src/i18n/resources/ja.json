@@ -230,7 +230,8 @@
     "no_decision_here": "この地点に打牌判断はありません。上の巡チップへ移動してください。",
     "explanation": "AI解説",
     "explanation_missing": "現在の範囲ではこの巡の解説がありません。全巡に切替か再生成してください。",
-    "explanation_need_generate": "コーチングを生成するとこの巡のAI解説が表示されます。"
+    "explanation_need_generate": "コーチングを生成するとこの巡のAI解説が表示されます。",
+    "score": "評価"
   },
   "coach": {
     "disabled": "コーチはオフです。設定 → AIチュートリアル で有効にしてください。",

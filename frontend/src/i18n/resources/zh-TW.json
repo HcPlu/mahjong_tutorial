@@ -230,7 +230,8 @@
     "no_decision_here": "此位置沒有切牌決策——點上方巡號跳轉。",
     "explanation": "AI 講解",
     "explanation_missing": "目前覆蓋檔沒有這一巡的講解——切到全部巡或重新產生。",
-    "explanation_need_generate": "產生講解後即可查看這一巡的 AI 講解。"
+    "explanation_need_generate": "產生講解後即可查看這一巡的 AI 講解。",
+    "score": "評分"
   },
   "coach": {
     "disabled": "教練未開啟——在設定 → AI 教學 中打開。",
