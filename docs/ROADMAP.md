@@ -12,32 +12,32 @@
 - [x] `.gitignore` 调整，使 AGENTS.md 受版本管理
 - [x] 本路线图
 
-## M1 — 复盘教练（第一个可用功能）`[ ]`
+## M1 — 复盘教练（第一个可用功能）`[x]`
 
 **场景**：打完一局，在 History 里选它，点"AI 复盘"，得到逐巡讲解：这里切了什么、AI 建议切什么、为什么（结合向听/铳率/和率数字）、有没有更好的路线。
 
 上游已有整局 mjai 事件流（`src/history/`）与 Review 页骨架（现为 MJOT 云端任务、结果跳外部分享页），M1 把闭环搬进应用内并 LLM 化：
 
-- [ ] 后端 `src/tutorial/`：复盘流水线——加载历史对局 → 逐决策点跑 `analysis` + bot 复算 → 生成结构化"讲解原料"（事件 + 数字 + 候选对比）
+- [x] 后端 `src/tutorial/`：复盘流水线——加载历史对局 → 逐决策点跑 `analysis` 重算 → 生成结构化"讲解原料"（`assemble.rs`：tracker 重放 + 引擎候选 + 局况，见 D-0012；bot 复算与分歧挖掘留 M4）
 - [x] LLM provider 抽象（`TutorialProvider` trait）：本地/云端可替换，key 走 config/环境变量，超时 + 失败降级 + 结果缓存（骨架已就绪：`src/tutorial/` 三区 + `[tutorial]` 配置，见 D-0007）
 - [x] 参照 bot 就绪：mortal-298k 本地包装入库（`mjai_bot/mortal/`，bot.py 协议代理 + manifest + 对局模拟器；权重与机器配置留在 ignore），作为复盘与候选讲解的"标准答案"参照（见 D-0010）
-- [ ] 讲解原料喂给 LLM 生成中文讲解，输出结构化 JSON（分巡、每巡含牌面快照 + 讲解文本 + 关键数字）
-- [ ] 前端：History 行内入口 + 应用内复盘渲染页（牌面用现成 `mahgen`；复用 `components/review/` 的骨架）
-- [ ] 讲解可对照原始事件流（借鉴 Inspector 的做法），保证 AI 没有胡说
+- [x] 讲解原料喂给 LLM 生成中文讲解，输出结构化 JSON（分巡、每巡含牌面快照 + 讲解文本 + 关键数字 + 全局总评 overview；关键巡/全部巡两档可切，All 档分批调用）
+- [x] 前端：History 行内入口 + 应用内复盘渲染页（`routes/Tutorial/` 步进回放 + 候选对比条形图 + 讲解卡，牌面用现成 `mahgen`；Settings 提供 LLM 配置卡与厂商预设）
+- [x] 讲解可对照原始事件流（`download.rs` 反幻觉核对：数字与引擎原料逐项相等，对不上整段拒绝；前端步进器可逐事件回看局面）
 
 **验收**：选一局真实历史对局，30 秒内得到完整中文复盘；讲解中的每个数字（向听、铳率）来自本地分析引擎而非 LLM 编造；断网/无 key 时功能优雅降级为纯数字复盘。
 
-## M2 — 实时讲解 `[ ]`
+## M2 — 实时讲解 `[~]`
 
 **场景**：对局中（或观战时）以可关闭的轻提示解释"AI 为什么这么建议"，把现有 HUD 从"给答案"升级为"给讲解"。双层架构（D-0008）：本地模板为底（即时、免费、离线可用），按需 LLM 深讲（用户主动触发、走 consent 门控）。
 
 详细设计：[docs/design/live-coach.md](design/live-coach.md)。
 
-- [ ] 前端讲解原料装配：订阅现有 `analysis-result` / `bot-response` 事件 + `get_game_snapshot` 快照，模板层零后端改动
-- [ ] 模板规则库 v1：五族规则（牌效率进张对比 / 防守安全牌对比 / 立直 vs 默听 / 押受局势 / bot 置信度），条件谓词 + 优先级 + 四语言句式
-- [ ] 教练开关（默认关）、节流（每巡至多一条提示、可一键静音到局末）
-- [ ] 仪表盘磁贴 `CommentaryTile`（走 `tiles/` 五处登记惯例）
-- [ ] 按需 LLM 深讲：IPC 命令复用三区管线（`TurnMaterial` 单巡变体），按 `game_id + 巡目` 缓存
+- [x] 前端讲解原料装配：订阅现有 `analysis-result` / `bot-response` 事件 + `get_game_snapshot` 快照，模板层零后端改动
+- [~] 模板规则库 v1：首批三族规则已上线（防守安全牌 / 听牌宣告 / bot 置信度，`components/tutorial/commentary/`）；效率进张对比、立直 vs 默听、押受局势三族后续补
+- [x] 教练开关（默认关，`[tutorial.coach]`）、节流（每巡至多一条提示、可一键静音到局末）
+- [x] 仪表盘磁贴 `CommentaryTile`（走 `tiles/` 五处登记惯例，默认隐藏）
+- [x] 按需 LLM 深讲：IPC 命令复用三区管线（`TurnMaterial` 单巡变体），按 `session_key + 巡目` 缓存（对局中尚无 ULID，见 D-0008 §4.3）
 
 **验收**：默认关闭；开启后模板层无网络依赖、决策点即时出话；深讲走 consent 门控且同一决策点只花一次钱；每巡至多一条提示。
 

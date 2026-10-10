@@ -5,6 +5,24 @@
 
 ---
 
+## D-0012 · M1 复盘装配落地：analysis-only 候选、关键巡两档、live 深讲以重算替代总线配对；secret/ 永不入库
+
+- **背景**：三区骨架（D-0007）就绪后，M1 复盘流水线（history → 原料 → LLM → 前端）与 M2 深讲层进入实施。两个待定问题：候选从哪来（AGENTS §6 禁止依赖 `src/bot` 内部，bot 离线重放无现成封装）；覆盖范围（一局 50-70 个自有决策点，全讲则每巡浅、输出长）。
+- **决定**：
+  1. **装配器 `src/tutorial/assemble.rs`**：私有 `GameTracker` 逐事件重放 + 决策点（我方摸→切窗口）跑 `analysis`。候选 = `hand14.maintain` 前 3 ∪ 实际切牌 ∪ `best_defence_discard`（后两者仅当在 maintain 中——否则无引擎数字可引用）；`maintain` 为空的巡跳过。**v1 不含鸣牌/杠决策**，bot/mortal 复算与分歧点挖掘留给 M4。
+  2. **`prob` 语义分语境**：复盘侧 = 展示候选内 `mixed_waits_score` 的归一化份额（引擎衍生排序提示，非 bot 概率）；live 深讲侧 = `meta.show` 的真 bot 概率。
+  3. **数字映射**（live/review 共用一函数）：`shanten ← result.shanten`、`win_rate ← avg_agari_rate/100`、`deal_in_rate ← mixed_risk/100`、`avg_score ← riichi_point>0 ? round : (dama_point>0 ? round : None)`。引擎内为百分数。
+  4. **覆盖两档**（用户选择）：`key`（默认）= 确定性关键巡规则 cap 12——①实际不在 maintain 前 3 ②对手立直且 ≤1 向听 ③该局首听巡 ④攻防最优不同且均在候选；`all` = 全部决策巡，LLM 调用按 ≤15 巡/批分批。
+  5. **junme 口径统一**：我方第 N 次摸牌（含岭上），不用快照 `turn_count`。
+  6. **StartGame 座位注入**：tracker 观察视角取自 `StartGame.id`；历史流未标视角时装配器注入 `our_seat` 再喂，否则快照手牌全 `"?"`。
+  7. **live 深讲以重算替代配对**（修正 D-0008 设计）：原设计订阅 `AnalysisBus`+`BotResponseBus` 配对，但两个并行订阅者无先后保证；实施改为收到 bot 响应即锁共享 tracker 快照重算（与 runner 同一纯函数链，~1ms），数字在源头自算。
+  8. **context/overview 扩展**：`TurnMaterial.context`（风局/本场/分数/立直家/宝牌，仅输入侧不校验）与 `ReviewDoc.overview`（总评）随本决策加入，serde 默认向后兼容旧缓存；`secret/`（本地 LLM key）加入 `.gitignore`，key 只经 env `TUTORIAL_LLM_API_KEY` 或 Settings UI 使用。
+  9. **厂商预设**（2026-10 价格调研）：免费主力 GLM-4.7-Flash（`open.bigmodel.cn/api/paas/v4`），付费甜点 qwen-flash（dashscope compatible-mode），质量位 DeepSeek-Flash / Kimi K2.6；预设只填 base_url/model，key 永远手输。
+- **理由**：候选不依赖 bot 内部即可满足讲解需求（引擎排名 + 实际/防守补充已足够教学）；关键巡两档在成本（免费档也省 token）与讲解深度间取得平衡；重算消除竞态且代码更少；座位注入是历史流可重放的必要修正。
+- **代价**：复盘候选无 bot 概率语义（用引擎份额近似），与 mortal 的分歧分析推迟到 M4；`all` 档长局需 4-5 次串行 LLM 调用（免费档无成本压力，仅时间）。
+
+
+
 ## D-0011 · 对局内代打开关：复用上游 autoplay 引擎，治理红线从"不增强"收窄为"不开发新能力"
 
 - **背景**：仓库主人需要对局中随时切换 auto/手动。上游 Akagi 的 autoplay 引擎（CDP 点击 + 延迟模型 + 点击校验）完整可用，但其唯一入口是 Settings 的草稿+保存流程，对局中切换要离开牌桌。原治理规则（AGENTS.md 规则 8、ROADMAP 非目标）写的是"不新增、不增强代打能力"，一个对局内开关严格来说构成"增强"。
