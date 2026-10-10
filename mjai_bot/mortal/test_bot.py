@@ -25,6 +25,7 @@ import os
 import sys
 sys.stdin.reconfigure(encoding='utf-8')
 out = open(os.environ["FAKE_ENGINE_LOG"], 'w', encoding='utf-8')
+mortal_style = os.environ.get("FAKE_STYLE") == "mortal"
 for line in sys.stdin:
     line = line.strip()
     if not line:
@@ -33,9 +34,22 @@ for line in sys.stdin:
     out.flush()
     e = json.loads(line)
     if e.get("type") == "tsumo" and e.get("actor") == 0:
-        print('{"type":"dahai","actor":0,"pai":"1m","tsumogiri":false}', flush=True)
+        if mortal_style:
+            # legal: id0 discard 1m, id1 discard 2m, id37 riichi (mjai.app format)
+            print('{"type":"dahai","actor":0,"pai":"1m","tsumogiri":false,'
+                  '"meta":{"q_values":[0.12,-4.5,-5.0],'
+                  '"mask_bits":' + str((1 << 0) | (1 << 1) | (1 << 37)) + ','
+                  '"is_greedy":true,"shanten":2}}', flush=True)
+        else:
+            print('{"type":"dahai","actor":0,"pai":"1m","tsumogiri":false}', flush=True)
     if e.get("type") == "dahai" and e.get("actor") == 1:
-        print('{"type":"none","meta":{"note":"pass"}}', flush=True)
+        if mortal_style:
+            # declined call: id41 pon, id45 pass — pass has the higher Q
+            print('{"type":"none",'
+                  '"meta":{"q_values":[-3.0,-0.1],'
+                  '"mask_bits":' + str((1 << 41) | (1 << 45)) + '}}', flush=True)
+        else:
+            print('{"type":"none","meta":{"note":"pass"}}', flush=True)
     if e.get("type") == "end_game":
         print('{"type":"none"}', flush=True)
         break
@@ -61,9 +75,11 @@ class BotProxyTestCase(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_bot(self, batches):
+    def run_bot(self, batches, style=None):
         env = {**os.environ, "AKAGI_BOT_CONFIG": self.settings,
                "FAKE_ENGINE_LOG": self.engine_log}
+        if style:
+            env["FAKE_STYLE"] = style
         proc = subprocess.run(
             [sys.executable, os.path.join(BOT_DIR, "bot.py"), "0"],
             input="".join(json.dumps(b) + "\n" for b in batches),
@@ -122,6 +138,79 @@ class BotProxyTestCase(unittest.TestCase):
         self.assertEqual(len(replies), 2)
         self.assertEqual(json.loads(replies[-1])["type"], "none")
         self.assertIn('{"type":"end_game"}', self.engine_lines())
+
+    def test_mortal_meta_becomes_show_card(self):
+        self.settings = os.path.join(self.tmp.name, "bot_config_mortal.json")
+        with open(self.settings, "w", encoding="utf-8") as f:
+            json.dump(
+                {"python_path": sys.executable, "mortal_dir": self.tmp.name},
+                f,
+            )
+        batch = [{"type": "tsumo", "actor": 0, "pai": "2m"}]
+        proc = self.run_bot([batch], style="mortal")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        reply = json.loads(proc.stdout.splitlines()[0])
+        self.assertEqual(reply["type"], "dahai")
+        show = reply["meta"]["show"]
+        items = show["items"]
+        self.assertEqual(items[0]["label"], "Discard 1m")
+        self.assertEqual(items[0]["pais"], ["1m"])
+        self.assertEqual(items[0]["color"], "#00ff80")
+        self.assertGreater(float(items[0]["value"].rstrip("%")), 90.0)
+        labels = [i["label"] for i in items]
+        self.assertIn("Discard 2m", labels)
+        self.assertIn("Riichi", labels)
+
+    def test_declined_call_none_gets_show_card(self):
+        self.settings = os.path.join(self.tmp.name, "bot_config_mortal.json")
+        with open(self.settings, "w", encoding="utf-8") as f:
+            json.dump(
+                {"python_path": sys.executable, "mortal_dir": self.tmp.name},
+                f,
+            )
+        batch = [{"type": "dahai", "actor": 1, "pai": "5s", "tsumogiri": True}]
+        proc = self.run_bot([batch], style="mortal")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        reply = json.loads(proc.stdout.splitlines()[0])
+        self.assertEqual(reply["type"], "none")
+        items = reply["meta"]["show"]["items"]
+        self.assertEqual(items[0]["label"], "Pass")
+        self.assertGreater(items[0]["prob"], items[1]["prob"])
+        self.assertEqual(items[1]["label"], "Pon")
+
+
+class BuildShowTestCase(unittest.TestCase):
+    """Direct unit tests for the mjai.app meta → meta.show translation."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, BOT_DIR)
+        import bot
+
+        cls.bot = bot
+
+    def test_red_five_discard_decodes(self):
+        # ascending ids: 0 (discard 1m), 34 (discard 5mr) — 5mr has the higher Q
+        reaction = {"type": "dahai", "meta": {
+            "q_values": [0.9, 1.0], "mask_bits": (1 << 0) | (1 << 34)}}
+        show = self.bot.build_show(reaction)
+        self.assertEqual(show["items"][0]["label"], "Discard 5mr")
+        self.assertEqual(show["items"][0]["pais"], ["5mr"])
+
+    def test_mismatched_lengths_skip_translation(self):
+        reaction = {"type": "dahai", "meta": {"q_values": [1.0], "mask_bits": 0b11}}
+        self.assertIsNone(self.bot.build_show(reaction))
+
+    def test_missing_meta_returns_none(self):
+        self.assertIsNone(self.bot.build_show({"type": "none"}))
+        self.assertIsNone(self.bot.build_show({"type": "none", "meta": {"note": "x"}}))
+
+    def test_softmax_probabilities_sum_to_one(self):
+        reaction = {"type": "none", "meta": {
+            "q_values": [0.0, -1.0], "mask_bits": (1 << 41) | (1 << 45)}}
+        show = self.bot.build_show(reaction)
+        self.assertAlmostEqual(sum(i["prob"] for i in show["items"]), 1.0, places=3)
+        self.assertEqual(show["items"][0]["label"], "Pon")
 
 
 if __name__ == "__main__":

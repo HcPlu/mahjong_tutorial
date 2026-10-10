@@ -19,6 +19,7 @@ Weights: mortal_298k.pth from https://huggingface.co/VoidShine/mortal-298k
 """
 
 import json
+import math
 import os
 import queue
 import subprocess
@@ -57,6 +58,81 @@ GRACE = 0.25
 # (the declaration discard is still owed).
 _CALL_WINDOW = {"dahai", "kakan"}
 _OWN_FOLLOWUP = {"chi", "pon", "daiminkan", "ankan", "kakan", "reach_accepted"}
+
+# ---------------------------------------------------------------------------
+# meta.show translation (mortal → HUD card)
+#
+# mortal.py's meta is the mjai.app wire format: `q_values` holds the Q values
+# of the *legal* actions only, in ascending order of the action ids whose bits
+# are set in `mask_bits` (libriichi agent/mortal.rs gen_meta). The action-id
+# space is the public mjai.app protocol (libriichi consts.rs):
+#
+#   0..=33 discard (1m..9m 1p..9p 1s..9s E S W N P F C)
+#   34..=36 discard red five (5mr 5pr 5sr)
+#   37 riichi / 38..=40 chi low/mid/high / 41 pon / 42 kan
+#   43 agari / 44 kyuushu ryuukyoku / 45 pass
+#
+# Akagi's HUD (Overlay / BotShowTile) only renders `meta.show` envelopes, so
+# we translate every engine reaction that carries q_values into a ranked
+# candidate card. Each item also gets a numeric `prob` (softmax over the
+# legal Q values), which is what src/autoplay/delay/probs.rs consumes.
+_TILES_34 = [f"{n}{s}" for s in "mps" for n in range(1, 10)] + list("ESWNPFC")
+_ACTION_TABLE = (
+    [(f"Discard {t}", t) for t in _TILES_34]
+    + [(f"Discard {t}", t) for t in ("5mr", "5pr", "5sr")]
+    + [("Riichi", None), ("Chi (low)", None), ("Chi (mid)", None), ("Chi (high)", None),
+       ("Pon", None), ("Kan", None), ("Agari", None), ("Kyuushu", None), ("Pass", None)]
+)
+_SHOW_MAX_ITEMS = 8
+
+
+def build_show(reaction):
+    """Return a `meta.show` envelope for an engine reaction, or None."""
+    meta = reaction.get("meta")
+    if not isinstance(meta, dict):
+        return None
+    q_values = meta.get("q_values")
+    mask_bits = meta.get("mask_bits")
+    if not isinstance(q_values, list) or not isinstance(mask_bits, int):
+        return None
+
+    ids = [i for i in range(len(_ACTION_TABLE)) if (mask_bits >> i) & 1]
+    if not ids or len(ids) != len(q_values):
+        return None
+
+    try:
+        qs = [float(q) for q in q_values]
+    except (TypeError, ValueError):
+        return None
+    top = max(qs)
+    exps = [math.exp(q - top) for q in qs]
+    total = sum(exps)
+    order = sorted(range(len(ids)), key=lambda k: exps[k], reverse=True)
+
+    items = []
+    for rank, k in enumerate(order[:_SHOW_MAX_ITEMS]):
+        label, tile = _ACTION_TABLE[ids[k]]
+        prob = exps[k] / total
+        item = {"label": label, "prob": round(prob, 4), "value": f"{prob * 100:.2f}%"}
+        if tile:
+            item["pais"] = [tile]
+        if rank == 0:
+            item["color"] = "#00ff80"
+        items.append(item)
+    return {"title": "Mortal candidates", "items": items}
+
+
+def enrich_with_show(reply):
+    """Attach meta.show to an engine-originated reply line (never synthesized)."""
+    try:
+        parsed = json.loads(reply)
+    except ValueError:
+        return reply
+    show = build_show(parsed)
+    if show is None:
+        return reply
+    parsed.setdefault("meta", {})["show"] = show
+    return json.dumps(parsed, separators=(",", ":"))
 
 
 def notify(level, title, body=None):
@@ -254,7 +330,7 @@ def main():
                     notify("error", "mortal-298k: engine died", str(exc))
 
         if reply:
-            sys.stdout.write(reply + "\n")
+            sys.stdout.write(enrich_with_show(reply) + "\n")
         else:
             sys.stdout.write('{"type":"none"}\n')
         sys.stdout.flush()

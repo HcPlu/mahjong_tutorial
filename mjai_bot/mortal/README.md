@@ -104,6 +104,22 @@ seat (own tsumo, opponent dahai/kakan call window, own meld follow-up,
 reach_accepted), or a 0.25 s grace window otherwise, falling back to
 `{"type":"none"}`.
 
+## meta.show translation
+
+Akagi's HUD (Overlay window / BotShowTile) only renders `meta.show`
+envelopes; mortal emits the mjai.app wire format instead (`q_values` =
+Q values of the *legal* actions, ascending by the action ids set in
+`mask_bits`, over the 46-action space: 0-33 discard, 34-36 red-five
+discard, 37 riichi, 38-40 chi low/mid/high, 41 pon, 42 kan, 43 agari,
+44 kyuushu, 45 pass). `bot.py` translates every engine reaction that
+carries `q_values` into a ranked candidate card (`build_show`): softmax
+probabilities over the legal Q values, tile graphics for discards, green
+accent on the top pick, declined calls rendered as "Pass 94% / Pon 6%".
+Each item also carries a numeric `prob`, which is what
+`src/autoplay/delay/probs.rs` consumes for the human-like delay model.
+Reactions whose `q_values` length does not match the popcount of
+`mask_bits` pass through untranslated rather than guess.
+
 ## License boundary
 
 The AGPL-3.0 engine and weights stay inside their own process tree:
