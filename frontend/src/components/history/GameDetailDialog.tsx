@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ExternalLink, Loader2, SearchCheck, Share2 } from 'lucide-react'
+import { ExternalLink, GraduationCap, Loader2, SearchCheck, Share2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -36,12 +36,15 @@ export function GameDetailDialog({
   record,
   onOpenChange,
   onReview,
+  onTutorial,
 }: {
   record: GameRecord | null
   onOpenChange: (open: boolean) => void
   /** Open the review submit flow for this game (the caller closes this
    *  dialog first — stacked modals would bury the confirm step). */
   onReview?: (record: GameRecord) => void
+  /** Open the tutorial (AI coaching) replay for this game. */
+  onTutorial?: (record: GameRecord) => void
 }) {
   const { t } = useTranslation()
   const open = record !== null
@@ -112,6 +115,15 @@ export function GameDetailDialog({
                     </Button>
                   )}
                 </div>
+              </Section>
+            )}
+
+            {onTutorial && (
+              <Section title={t('tutorial.title')}>
+                <Button variant="outline" size="sm" onClick={() => onTutorial(record)}>
+                  <GraduationCap className="h-3.5 w-3.5" />
+                  {t('history.detail.tutorial_review')}
+                </Button>
               </Section>
             )}
 

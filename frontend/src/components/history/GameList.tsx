@@ -10,6 +10,7 @@
 // feature can't apply to (no API key, observer games) show no icon at all.
 
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Loader2, SearchCheck, Share2, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -60,6 +61,7 @@ export function GameList({
   rule: PtRule
 }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [open, setOpen] = useState<GameRecord | null>(null)
   const [reviewRec, setReviewRec] = useState<GameRecord | null>(null)
   const [rowBusy, setRowBusy] = useState<string | null>(null)
@@ -277,6 +279,10 @@ export function GameList({
           // the confirm step behind the detail dialog's backdrop.
           setOpen(null)
           setReviewRec(r)
+        }}
+        onTutorial={(r) => {
+          setOpen(null)
+          navigate(`/tutorial?game=${encodeURIComponent(r.id)}`)
         }}
       />
       <ReviewSubmitDialog

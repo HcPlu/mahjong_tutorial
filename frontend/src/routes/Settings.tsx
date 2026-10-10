@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog'
 import { HAS_TAURI, invoke } from '@/lib/tauri'
 import { openExternal } from '@/lib/external'
+import { TutorialLlmCard } from '@/components/tutorial/TutorialLlmCard'
 import { useSidebar } from '@/hooks/useSidebar'
 import { useAnnouncementStore } from '@/stores/announcementStore'
 import { useCaptureStore } from '@/stores/captureStore'
@@ -296,6 +297,8 @@ export function Settings() {
       />
 
       <NetworkCard draft={draft} setDraft={setDraft} />
+
+      <TutorialLlmCard draft={draft} setDraft={setDraft} />
 
       <UpdatesCard />
 

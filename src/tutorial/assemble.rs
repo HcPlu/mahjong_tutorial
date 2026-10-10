@@ -243,13 +243,17 @@ pub struct ReplayOutline {
     pub decisions: Vec<OutlineDecision>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OutlineDecision {
     /// Index of our draw (`Tsumo`) event in the stream.
     pub event_index: u32,
     pub junme: u32,
     pub is_key: bool,
+    /// The student's actual discard, mjai tile (e.g. `"5s"`) — lets the
+    /// replay page badge the real pick on the candidate chart without
+    /// shipping the whole material.
+    pub actual: String,
 }
 
 /// One replay step for the frontend: the snapshot at an event index,
@@ -279,6 +283,12 @@ impl ScanResult {
                     event_index: d.event_index,
                     junme: d.junme,
                     is_key: d.is_key,
+                    actual: d
+                        .material
+                        .actual
+                        .strip_prefix("dahai:")
+                        .unwrap_or(&d.material.actual)
+                        .to_string(),
                 })
                 .collect(),
         }
@@ -795,5 +805,7 @@ mod tests {
         assert_eq!(outline.total_events as usize, events.len());
         assert_eq!(outline.decisions.len(), 2);
         assert_eq!(outline.decisions[0].event_index, 2);
+        assert_eq!(outline.decisions[0].actual, "E");
+        assert_eq!(outline.decisions[1].actual, "W");
     }
 }

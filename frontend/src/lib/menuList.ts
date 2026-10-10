@@ -1,6 +1,7 @@
 import {
   Bot,
   Gamepad2,
+  GraduationCap,
   History as HistoryIcon,
   LayoutDashboard,
   ScrollText,
@@ -41,6 +42,7 @@ export function getMenuList(t: Translate): MenuGroup[] {
         { href: '/game', label: t('nav.game'), icon: Gamepad2 },
         { href: '/bots', label: t('nav.bots'), icon: Bot },
         { href: '/history', label: t('nav.history'), icon: HistoryIcon },
+        { href: '/tutorial', label: t('nav.tutorial'), icon: GraduationCap },
         { href: '/review', label: t('nav.review'), icon: SearchCheck },
         { href: '/logs', label: t('nav.logs'), icon: ScrollText },
         { href: '/settings', label: t('nav.settings'), icon: SettingsIcon },

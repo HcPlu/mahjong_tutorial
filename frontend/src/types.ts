@@ -211,6 +211,35 @@ export type AppConfig = {
   autoplay: AutoplayConfig
   overlay: OverlayConfig
   network: NetworkConfig
+  /** Fork-only (src/config/tutorial.rs). Present in every backend payload;
+   *  kept optional so legacy fixtures without it still type-check. */
+  tutorial?: TutorialConfig
+}
+
+// ---------- Tutorial (AI coaching, fork-only) ----------
+//
+// Mirrors `crate::config::tutorial`. The llm section speaks the
+// OpenAI-compatible chat-completions protocol; the coach section drives
+// the in-game commentary tile (D-0008).
+
+export type TutorialLlmConfig = {
+  base_url: string
+  api_key: string
+  model: string
+  request_timeout_ms: number
+}
+
+export type TutorialCoachConfig = {
+  enabled: boolean
+  max_per_turn: number
+  deep_dive_button: boolean
+}
+
+export type TutorialConfig = {
+  enabled: boolean
+  upload_consent: boolean
+  llm: TutorialLlmConfig
+  coach: TutorialCoachConfig
 }
 
 // ---------- Built-in bot cloud inference (native API) ----------
@@ -482,6 +511,8 @@ export type PlayerSnapshot = {
   riichi_declaration_index: number | null
   /** 3p only: north tiles set aside via kita / nukidora. Empty in 4p. */
   kita_tiles: string[]
+  /** The just-drawn tile, populated for the active player only. */
+  drawn_tile?: string | null
 }
 
 export type GameStateSnapshot = {

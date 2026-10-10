@@ -11,6 +11,7 @@ import { GameDashboard } from '@/routes/GameDashboard'
 import { Bots } from '@/routes/Bots'
 import { History } from '@/routes/History'
 import { Review } from '@/routes/Review'
+import { Tutorial } from '@/routes/Tutorial'
 import { Logs } from '@/routes/Logs'
 import { Settings } from '@/routes/Settings'
 import { Setup } from '@/routes/Setup'
@@ -45,6 +46,7 @@ const router = createHashRouter([
       { path: 'game', element: <GameDashboard /> },
       { path: 'bots', element: <Bots /> },
       { path: 'history', element: <History /> },
+      { path: 'tutorial', element: <Tutorial /> },
       { path: 'review', element: <Review /> },
       { path: 'logs', element: <Logs /> },
       { path: 'settings', element: <Settings /> },
