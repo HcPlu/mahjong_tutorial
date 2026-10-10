@@ -1,0 +1,13 @@
+[project]
+name = "akagi-mortal-298k-bot"
+version = "0.1.0"
+description = "Protocol proxy to the local Mortal v4 engine (mortal-298k). Stdlib only; all heavy deps live in the engine's own venv."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+
+# No dependencies on purpose: bot.py is stdlib-only. The pyproject exists
+# because Akagi's bot manager requires it (spawn path runs `uv sync`), and it
+# doubles as the marker that makes the activation gate meaningful.
+
+[tool.uv]
+package = false

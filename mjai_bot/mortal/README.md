@@ -19,6 +19,7 @@ masking and the agari guard all match upstream exactly.
 mjai_bot/mortal/
 ├── bot.py            # Akagi ↔ mortal.py protocol proxy (stdlib only)
 ├── manifest.toml     # bot metadata + engine path settings (empty defaults)
+├── pyproject.toml    # required by Akagi's spawn path (uv sync); zero deps
 ├── settings.toml     # machine-local engine paths (gitignored; UI-writable)
 ├── engine.toml       # config passed to mortal.py via MORTAL_CFG (auto-generated, gitignored)
 ├── mortal_298k.pth   # weights, downloaded from HuggingFace (AGPL-3.0, gitignored)
