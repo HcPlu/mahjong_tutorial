@@ -232,6 +232,18 @@
     "explanation_missing": "No explanation for this turn under the current coverage — switch to All turns or regenerate.",
     "explanation_need_generate": "Generate the coaching to see the AI explanation for this turn."
   },
+  "coach": {
+    "disabled": "Coach is off — enable it in Settings → AI Tutorial.",
+    "muted": "Coach muted for this game.",
+    "waiting": "Waiting for your next decision…",
+    "defence": "An opponent declared riichi — {{tile}} is the safest discard ({{p}}% deal-in).",
+    "tenpai": "Tenpai! Waiting on {{tiles}} — {{n}} tiles left.",
+    "bot_confident": "AI clearly recommends {{action}} ({{prob}}%).",
+    "deep_dive": "Explain this turn",
+    "deep_loading": "Explaining…",
+    "deep_needs_config": "Needs the tutorial LLM configured and upload consent (Settings)",
+    "mute_toggle": "Mute/unmute coach"
+  },
   "logs": {
     "title": "Logs",
     "tab_diagnostic": "Diagnostic",
@@ -351,7 +363,8 @@
     "proxy_control": "Proxy",
     "dora": "Dora",
     "phase": "Phase",
-    "hide_x": "Hide {{title}}"
+    "hide_x": "Hide {{title}}",
+    "commentary": "Coach"
   },
   "common": {
     "live": "LIVE",

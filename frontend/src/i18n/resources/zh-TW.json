@@ -232,6 +232,18 @@
     "explanation_missing": "目前覆蓋檔沒有這一巡的講解——切到全部巡或重新產生。",
     "explanation_need_generate": "產生講解後即可查看這一巡的 AI 講解。"
   },
+  "coach": {
+    "disabled": "教練未開啟——在設定 → AI 教學 中打開。",
+    "muted": "本局教練已靜音。",
+    "waiting": "等待你的下一個決策…",
+    "defence": "對手立直——{{tile}} 最安全（放銃率 {{p}}%）。",
+    "tenpai": "聽牌！待 {{tiles}}，剩 {{n}} 張。",
+    "bot_confident": "AI 明確推薦 {{action}}（置信 {{prob}}%）。",
+    "deep_dive": "詳細講解",
+    "deep_loading": "講解產生中…",
+    "deep_needs_config": "需要先設定教學 LLM 並同意上傳（設定）",
+    "mute_toggle": "靜音/取消靜音教練"
+  },
   "logs": {
     "title": "日誌",
     "tab_diagnostic": "診斷紀錄",
@@ -351,7 +363,8 @@
     "proxy_control": "代理",
     "dora": "寶牌",
     "phase": "階段",
-    "hide_x": "隱藏 {{title}}"
+    "hide_x": "隱藏 {{title}}",
+    "commentary": "即時講解"
   },
   "common": {
     "live": "即時",

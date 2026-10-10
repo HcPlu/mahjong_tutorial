@@ -34,6 +34,9 @@ src/
     Bots.tsx                 Table + install + per-bot settings drawer
     Logs.tsx                 Active session + open folder
     Settings.tsx             AppConfig form
+    Tutorial/                AI coaching replay (fork-only): index = game
+                             picker, Replay = stepper + candidates + LLM
+                             explanations
   tiles/
     defaults.ts              DEFAULT_LAYOUTS per breakpoint, TILE_TITLES
     registry.tsx             id → component
@@ -46,6 +49,7 @@ src/
     notifyStore.ts           events / responses / toasts (capped, FIFO)
     configStore.ts           AppConfig + log dir
     layoutStore.ts           RGL layouts + hidden tiles, persisted to localStorage
+    tutorialStore.ts         Replay stepper + review doc + coach slice (fork-only)
   hooks/
     useTauriBridge.ts        One-shot Tauri event subscription, mounted from <App>
   i18n/
@@ -62,7 +66,10 @@ src/
 
 ## Tile catalog
 
-14 tiles wired to stores. Each is wrapped by `<TileFrame>` (shadcn `Card`
+14 tiles wired to stores, plus the fork-only **coach** tile
+(`components/tutorial/CommentaryTile.tsx`, hidden by default): the M2
+commentary engine's deterministic one-liners + the on-demand LLM deep
+dive. Each is wrapped by `<TileFrame>` (shadcn `Card`
 with a `.tile-drag-handle` header and `×` close button). Hidden tiles are
 restored via the `<AddTileMenu>` dropdown in the dashboard toolbar; "Reset
 Layout" reverts to defaults stored in `tiles/defaults.ts`.

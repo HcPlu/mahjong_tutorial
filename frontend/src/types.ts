@@ -39,6 +39,9 @@ export type ShowItem = {
   color?: string
   /** Small subtitle under `label`. */
   note?: string
+  /** Raw probability 0..1 for machine consumers (autoplay delay, the
+   *  coach tile); the formatted `value` only has integer resolution. */
+  prob?: number
 }
 
 export type ShowMeta = {

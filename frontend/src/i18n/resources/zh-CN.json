@@ -232,6 +232,18 @@
     "explanation_missing": "当前覆盖档没有这一巡的讲解——切到全部巡或重新生成。",
     "explanation_need_generate": "生成讲解后即可查看这一巡的 AI 讲解。"
   },
+  "coach": {
+    "disabled": "教练未开启——在设置 → AI 教程 中打开。",
+    "muted": "本局教练已静音。",
+    "waiting": "等待你的下一个决策…",
+    "defence": "对手立直——{{tile}} 最安全（铳率 {{p}}%）。",
+    "tenpai": "听牌！待 {{tiles}}，剩 {{n}} 张。",
+    "bot_confident": "AI 明确推荐 {{action}}（置信 {{prob}}%）。",
+    "deep_dive": "详细讲解",
+    "deep_loading": "讲解生成中…",
+    "deep_needs_config": "需要先配置教程 LLM 并同意上传（设置）",
+    "mute_toggle": "静音/取消静音教练"
+  },
   "logs": {
     "title": "日志",
     "tab_diagnostic": "诊断日志",
@@ -351,7 +363,8 @@
     "proxy_control": "代理",
     "dora": "宝牌",
     "phase": "阶段",
-    "hide_x": "隐藏 {{title}}"
+    "hide_x": "隐藏 {{title}}",
+    "commentary": "实时讲解"
   },
   "common": {
     "live": "实时",

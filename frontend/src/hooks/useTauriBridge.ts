@@ -23,10 +23,18 @@ import { useApiStatusStore } from '@/stores/apiStatusStore'
 import { useInstallStore } from '@/stores/installStore'
 import { useConfigStore } from '@/stores/configStore'
 import { useHistoryStore } from '@/stores/historyStore'
+import { useTutorialStore } from '@/stores/tutorialStore'
 import { toast, type ToastSeverity } from '@/components/ui/sonner'
+import { evaluate } from '@/components/tutorial/commentary/engine'
+import { CommentaryThrottle, turnKey } from '@/components/tutorial/commentary/throttle'
+import { pickShow } from '@/lib/botShow'
+import { getTutorialConfig } from '@/components/tutorial/configGate'
 
 // Backend `Notification.level` ∈ {info,success,warn,error}; toast helper
 // uses `warning`. Map across.
+// Module-level: the per-turn throttle outlives any single bridge mount.
+const coachThrottle = new CommentaryThrottle()
+
 const TOAST_SEVERITY: Record<Notification['level'], ToastSeverity> = {
   info: 'info',
   success: 'success',
@@ -97,7 +105,11 @@ export function useTauriBridge() {
 
     listen<MjaiEvent>('mjai-event', (e) => {
       // Fresh game: clear any lingering online-API outage from the last one.
-      if (e.type === 'start_game') useApiStatusStore.getState().reset()
+      if (e.type === 'start_game') {
+        useApiStatusStore.getState().reset()
+        coachThrottle.reset()
+        useTutorialStore.getState().coachReset()
+      }
       useNotifyStore.getState().pushEvent(e)
       void refreshGame()
     }).then((u) => unlistens.push(u))
@@ -116,6 +128,22 @@ export function useTauriBridge() {
 
     listen<BotResponse>('bot-response', (r) => {
       useNotifyStore.getState().pushResponse(r)
+      // Coach template layer: the bot answering marks a decision point —
+      // evaluate the rules once per turn against the latest local data
+      // (numbers straight from the analysis store / bot meta, never new
+      // math; D-0005).
+      const cfg = useConfigStore.getState().config
+      if (getTutorialConfig(cfg).coach.enabled) {
+        const snap = useGameStore.getState().game
+        if (snap && coachThrottle.allow(turnKey(snap))) {
+          const line = evaluate(
+            useAnalysisStore.getState().result,
+            pickShow(r.meta),
+            snap,
+          )
+          if (line) useTutorialStore.getState().setCoachLine(line)
+        }
+      }
     }).then((u) => unlistens.push(u))
 
     // The overlay window can turn itself off (its × button). Mirror that back

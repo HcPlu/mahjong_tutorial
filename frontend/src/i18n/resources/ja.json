@@ -232,6 +232,18 @@
     "explanation_missing": "現在の範囲ではこの巡の解説がありません。全巡に切替か再生成してください。",
     "explanation_need_generate": "コーチングを生成するとこの巡のAI解説が表示されます。"
   },
+  "coach": {
+    "disabled": "コーチはオフです。設定 → AIチュートリアル で有効にしてください。",
+    "muted": "この対局はコーチをミュート中です。",
+    "waiting": "次の決断を待っています…",
+    "defence": "相手がリーチ — {{tile}} が最も安全です（放銃率 {{p}}%）。",
+    "tenpai": "テンパイ！{{tiles}} 待ち — 残り {{n}} 枚。",
+    "bot_confident": "AIは{{action}}を強く推奨しています（{{prob}}%）。",
+    "deep_dive": "この巡を解説",
+    "deep_loading": "解説中…",
+    "deep_needs_config": "LLMの設定とアップロード同意が必要です（設定）",
+    "mute_toggle": "コーチのミュート切替"
+  },
   "logs": {
     "title": "ログ",
     "tab_diagnostic": "診断ログ",
@@ -351,7 +363,8 @@
     "proxy_control": "プロキシ",
     "dora": "ドラ",
     "phase": "フェーズ",
-    "hide_x": "{{title}} を非表示"
+    "hide_x": "{{title}} を非表示",
+    "commentary": "コーチ"
   },
   "common": {
     "live": "ライブ",

@@ -10,11 +10,13 @@
 import { create } from 'zustand'
 
 import { invoke } from '@/lib/tauri'
+import type { CommentaryLine } from '@/components/tutorial/commentary/engine'
 import type {
   ReplayOutline,
   ReplayStep,
   ReviewCoverage,
   ReviewDoc,
+  TurnDoc,
 } from '@/components/tutorial/types'
 
 const COVERAGE_KEY = 'akagi.tutorial.coverage'
@@ -53,6 +55,23 @@ type TutorialStore = {
   setCoverage: (coverage: ReviewCoverage) => void
   /** Generate (or re-generate) the LLM review for the open game. */
   generate: () => Promise<void>
+
+  // --- in-game coach slice (M2, D-0008) ---
+  coach: {
+    /** The current template-layer line (already throttled upstream). */
+    line: CommentaryLine | null
+    /** User muted the coach for this game (reset on start_game). */
+    muted: boolean
+    /** Latest deep-dive explanation (cached per turn on the backend). */
+    deepDoc: TurnDoc | null
+    deepLoading: boolean
+    deepError: string | null
+  }
+  setCoachLine: (line: CommentaryLine | null) => void
+  coachToggleMute: () => void
+  /** New game: clear the line, the mute and the deep dive. */
+  coachReset: () => void
+  explainLive: () => Promise<void>
 }
 
 async function fetchStep(gameId: string, index: number): Promise<ReplayStep | null> {
@@ -71,6 +90,34 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
   stepIndex: 0,
   step: null,
   coverage: loadCoverage(),
+
+  coach: {
+    line: null,
+    muted: false,
+    deepDoc: null,
+    deepLoading: false,
+    deepError: null,
+  },
+
+  setCoachLine: (line) => set((s) => ({ coach: { ...s.coach, line } })),
+  coachToggleMute: () => set((s) => ({ coach: { ...s.coach, muted: !s.coach.muted } })),
+  coachReset: () =>
+    set({
+      coach: { line: null, muted: false, deepDoc: null, deepLoading: false, deepError: null },
+    }),
+
+  explainLive: async () => {
+    if (get().coach.deepLoading) return
+    set((s) => ({ coach: { ...s.coach, deepLoading: true, deepError: null } }))
+    try {
+      const deepDoc = await invoke<TurnDoc>('tutorial_explain_live')
+      set((s) => ({ coach: { ...s.coach, deepDoc, deepLoading: false } }))
+    } catch (e) {
+      set((s) => ({
+        coach: { ...s.coach, deepLoading: false, deepError: String(e) },
+      }))
+    }
+  },
 
   openGame: async (gameId) => {
     set({
