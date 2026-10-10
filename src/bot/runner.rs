@@ -61,6 +61,9 @@ const RESET_GRACE_MS: u64 = 500;
 ///
 /// Implementations own the transport (subprocess pipe, in-process Python,
 /// ...) and any per-game state. Calls are sequential — no internal queueing.
+// double_must_use fires on the async_trait-generated fn (clippy ≥1.99), not
+// on anything written here.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait BotRunner: Send {
     /// Push a batch of events; return the bot's reaction.

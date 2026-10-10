@@ -96,6 +96,9 @@ pub struct CaptureCtx {
 /// A capture transport. Implementors run a long-lived I/O loop until
 /// `shutdown` resolves or a fatal error occurs, pushing frames into the
 /// bridge layer along the way.
+// double_must_use fires on the async_trait-generated fn (clippy ≥1.99), not
+// on anything written here.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait CaptureBackend: Send {
     /// Run the backend. Must respect `shutdown` for graceful exit.
