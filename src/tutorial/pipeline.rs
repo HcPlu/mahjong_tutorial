@@ -21,7 +21,10 @@ use crate::tutorial::upload;
 /// coverage on a long game simply runs more chunks.
 const TURNS_PER_REQUEST: usize = 15;
 const TEMPERATURE: f32 = 0.2;
-const MAX_TOKENS_PER_REQUEST: u32 = 4000;
+/// Reasoning-style models (GLM-4.7 etc.) spend invisible thinking tokens
+/// from the same budget before writing the JSON — measured against the
+/// real endpoint, 4000 starves the content to empty on a 6-turn prompt.
+const MAX_TOKENS_PER_REQUEST: u32 = 8000;
 
 #[derive(Debug)]
 pub struct GenerateOutcome {

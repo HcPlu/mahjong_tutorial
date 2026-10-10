@@ -1551,7 +1551,9 @@ pub async fn tutorial_explain_live(state: State<'_, AppState>) -> CmdResult<Turn
         .complete(crate::tutorial::ChatRequest {
             messages: crate::tutorial::build_turn_messages(&turn.material),
             temperature: Some(0.2),
-            max_tokens: Some(1500),
+            // Headroom for reasoning models: thinking tokens come out of
+            // the same budget before the JSON body (see pipeline.rs).
+            max_tokens: Some(3000),
         })
         .await
         .map_err(|e| format!("LLM request failed: {e:#}"))?;
