@@ -17,16 +17,15 @@ export function getTutorialConfig(cfg: AppConfig | null | undefined): TutorialCo
   return cfg?.tutorial ?? DEFAULT_TUTORIAL_CONFIG
 }
 
-/** True when the LLM endpoint is fully configured (URL + key + model).
- *  Mirrors `LlmConfig::is_configured`; the env-var override is applied
- *  backend-side, so a key here being empty doesn't rule out env usage —
- *  treat this as "looks configured" for UI hints only. */
+/** True when the LLM endpoint looks configured (URL + model).
+ *
+ *  Deliberately does NOT require `api_key`: the backend's
+ *  `effective_api_key()` lets `TUTORIAL_LLM_API_KEY` override the stored
+ *  key, and the frontend cannot see env vars. An env-key setup must keep
+ *  the buttons enabled — the backend stays authoritative and returns a
+ *  clear error if no key exists at all. */
 export function llmConfigured(cfg: TutorialConfig): boolean {
-  return (
-    cfg.llm.base_url.trim() !== '' &&
-    cfg.llm.api_key.trim() !== '' &&
-    cfg.llm.model.trim() !== ''
-  )
+  return cfg.llm.base_url.trim() !== '' && cfg.llm.model.trim() !== ''
 }
 
 /** Mirror of `TutorialConfig::outbound_allowed()` — gates the generate /

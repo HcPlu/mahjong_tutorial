@@ -30,8 +30,23 @@ describe('configGate', () => {
     expect(outboundAllowed(base)).toBe(true)
     expect(outboundAllowed({ ...base, upload_consent: false })).toBe(false)
     expect(outboundAllowed({ ...base, enabled: false })).toBe(false)
-    expect(outboundAllowed({ ...base, llm: { ...base.llm, api_key: '' } })).toBe(false)
     expect(outboundAllowed({ ...base, llm: { ...base.llm, model: '  ' } })).toBe(false)
+  })
+
+  it('an empty stored api_key does not block the gate (env override is backend-side)', () => {
+    const cfg = {
+      ...DEFAULT_TUTORIAL_CONFIG,
+      enabled: true,
+      upload_consent: true,
+      llm: {
+        base_url: 'https://open.bigmodel.cn/api/paas/v4',
+        api_key: '',
+        model: 'glm-4.5-flash',
+        request_timeout_ms: 60_000,
+      },
+    }
+    expect(llmConfigured(cfg)).toBe(true)
+    expect(outboundAllowed(cfg)).toBe(true)
   })
 
   it('llmConfigured treats whitespace-only fields as empty', () => {
