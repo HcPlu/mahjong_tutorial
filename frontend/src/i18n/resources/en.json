@@ -916,6 +916,9 @@
     "warning": "Please don’t close the app or start a game until the installation finishes."
   },
   "overlay": {
+    "auto_label": "AUTO",
+    "auto_on_title": "Enable autoplay",
+    "auto_off_title": "Autoplay is on — click to turn off",
     "close": "Close overlay",
     "empty": "Waiting for the bot…"
   }

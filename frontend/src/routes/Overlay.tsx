@@ -29,16 +29,24 @@ export function Overlay() {
   const { t } = useTranslation()
   const [show, setShow] = useState<ShowMeta | null>(null)
   const [cfg, setCfg] = useState<OverlayConfig>(FALLBACK)
+  const [auto, setAuto] = useState(false)
 
   useEffect(() => {
     const unlistens: Array<() => void> = []
     let cancelled = false
 
+    const refreshConfig = (c: AppConfig) => {
+      setCfg(c.overlay)
+      setAuto(c.autoplay?.enabled ?? false)
+    }
+
     // The window is opened by the backend, so config is already on disk;
-    // `overlay-config` keeps us in step with later edits in Settings.
+    // `overlay-config` keeps us in step with later edits in Settings — every
+    // Settings save broadcasts it, so autoplay flips made there also reach
+    // this toggle.
     invoke<AppConfig>('get_config')
       .then((c) => {
-        if (!cancelled) setCfg(c.overlay)
+        if (!cancelled) refreshConfig(c)
       })
       .catch(() => {
         /* keep the fallback — a blank overlay would be worse than a default one */
@@ -51,7 +59,15 @@ export function Overlay() {
       if (s) setShow(s)
     }).then((u) => unlistens.push(u))
 
-    listen<OverlayConfig>('overlay-config', (c) => setCfg(c)).then((u) => unlistens.push(u))
+    listen<OverlayConfig>('overlay-config', () => {
+      // Refetch the whole config: the event payload only carries the overlay
+      // section, while this window also mirrors `autoplay.enabled`.
+      invoke<AppConfig>('get_config')
+        .then((c) => {
+          if (!cancelled) refreshConfig(c)
+        })
+        .catch(() => {})
+    }).then((u) => unlistens.push(u))
 
     return () => {
       cancelled = true
@@ -65,6 +81,15 @@ export function Overlay() {
   // restarts. Settings is the way back.
   const close = () => {
     void invoke('set_overlay_enabled', { enabled: false }).catch(() => {})
+  }
+
+  // In-game autoplay toggle: applies immediately (the backend flips the
+  // shared config, and the manager re-reads it every decision), optimistic
+  // with a revert on failure.
+  const toggleAuto = () => {
+    const next = !auto
+    setAuto(next)
+    invoke('set_autoplay_enabled', { enabled: next }).catch(() => setAuto(!next))
   }
 
   return (
@@ -84,6 +109,22 @@ export function Overlay() {
           <span className="flex-1 truncate text-[11px] font-medium text-muted-foreground">
             {show?.title ?? t('tile.bot_show_default_title')}
           </span>
+          <button
+            type="button"
+            onClick={toggleAuto}
+            aria-pressed={auto}
+            aria-label={auto ? t('overlay.auto_off_title') : t('overlay.auto_on_title')}
+            title={auto ? t('overlay.auto_off_title') : t('overlay.auto_on_title')}
+            className={
+              'shrink-0 cursor-pointer rounded border px-1.5 py-px text-[10px] font-semibold tracking-wide ' +
+              (auto
+                ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-500'
+                : 'border-border text-muted-foreground hover:text-foreground')
+            }
+            style={{ pointerEvents: 'auto' }}
+          >
+            {t('overlay.auto_label')}
+          </button>
           <button
             type="button"
             onClick={close}

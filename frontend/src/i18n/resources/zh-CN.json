@@ -916,6 +916,9 @@
     "warning": "安装完成前，请勿关闭程序或前往对局。"
   },
   "overlay": {
+    "auto_label": "代打",
+    "auto_on_title": "开启代打",
+    "auto_off_title": "代打已开启，点击关闭",
     "close": "关闭悬浮窗",
     "empty": "等待 AI 建议…"
   }

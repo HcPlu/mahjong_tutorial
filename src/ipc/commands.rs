@@ -56,6 +56,40 @@ fn claim_autoplay_manager_spawn(
             .is_ok()
 }
 
+/// Spawns the once-per-process autoplay manager task. The caller claims (and
+/// re-checks `autoplay.enabled`) via `claim_autoplay_manager_spawn`; shared
+/// by `update_config` and the overlay's `set_autoplay_enabled` toggle.
+fn spawn_autoplay_manager_task(state: &AppState) {
+    let cfg_for_ap = state.config.clone();
+    let ctx_for_ap = state.autoplay_context.clone();
+    let tracker_for_ap = state.game_tracker.clone();
+    let mjai_for_ap = state.mjai_bus.clone();
+    let resp_for_ap = state.bot_response_bus.clone();
+    let notify_for_ap = state.notify_bus.clone();
+    let config_dir_for_ap = state
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
+    let started_flag = state.autoplay_manager_started.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = crate::autoplay::run_autoplay_manager(
+            cfg_for_ap,
+            ctx_for_ap,
+            tracker_for_ap,
+            mjai_for_ap,
+            resp_for_ap,
+            notify_for_ap,
+            config_dir_for_ap,
+        )
+        .await
+        {
+            tracing::error!("Autoplay manager failed: {e:#}");
+            started_flag.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    });
+}
+
 fn entry_to_info(e: &BotEntry) -> BotInfo {
     BotInfo {
         name: e.name.clone(),
@@ -173,34 +207,7 @@ pub async fn update_config(
     }
 
     if claim_autoplay_manager_spawn(autoplay_now_enabled, &state.autoplay_manager_started) {
-        let cfg_for_ap = state.config.clone();
-        let ctx_for_ap = state.autoplay_context.clone();
-        let tracker_for_ap = state.game_tracker.clone();
-        let mjai_for_ap = state.mjai_bus.clone();
-        let resp_for_ap = state.bot_response_bus.clone();
-        let notify_for_ap = state.notify_bus.clone();
-        let config_dir_for_ap = state
-            .config_path
-            .parent()
-            .map(std::path::Path::to_path_buf)
-            .unwrap_or_default();
-        let started_flag = state.autoplay_manager_started.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = crate::autoplay::run_autoplay_manager(
-                cfg_for_ap,
-                ctx_for_ap,
-                tracker_for_ap,
-                mjai_for_ap,
-                resp_for_ap,
-                notify_for_ap,
-                config_dir_for_ap,
-            )
-            .await
-            {
-                tracing::error!("Autoplay manager failed: {e:#}");
-                started_flag.store(false, std::sync::atomic::Ordering::SeqCst);
-            }
-        });
+        spawn_autoplay_manager_task(&state);
     }
     Ok(())
 }
@@ -225,6 +232,31 @@ pub async fn set_overlay_enabled(
     };
     persist_config(&cfg, &state.config_path).map_err(|e| e.to_string())?;
     overlay::reconcile(&app, &cfg.overlay);
+    Ok(())
+}
+
+/// Flip `autoplay.enabled` and apply it immediately — the in-game overlay's
+/// Auto toggle, so switching autoplay mid-game never requires a Settings
+/// round-trip (draft + save).
+///
+/// Mirrors what saving Settings does for this one field: the shared config is
+/// updated (the manager gates every decision on a fresh `autoplay.enabled`
+/// read, so flipping the flag is behaviorally instant), persisted, and the
+/// once-per-process manager is spawned on the false→true transition. The
+/// overlay refreshes its toggle from `get_config` on every `overlay-config`
+/// broadcast, which `update_config` emits via `overlay::reconcile` — so this
+/// command does not need its own change event.
+#[tauri::command]
+pub async fn set_autoplay_enabled(enabled: bool, state: State<'_, AppState>) -> CmdResult<()> {
+    let cfg = {
+        let mut cfg = state.config.write().await;
+        cfg.autoplay.enabled = enabled;
+        cfg.clone()
+    };
+    persist_config(&cfg, &state.config_path).map_err(|e| e.to_string())?;
+    if claim_autoplay_manager_spawn(enabled, &state.autoplay_manager_started) {
+        spawn_autoplay_manager_task(&state);
+    }
     Ok(())
 }
 
@@ -1743,6 +1775,7 @@ macro_rules! ipc_handlers {
             $crate::ipc::commands::get_config,
             $crate::ipc::commands::update_config,
             $crate::ipc::commands::set_overlay_enabled,
+            $crate::ipc::commands::set_autoplay_enabled,
             $crate::ipc::commands::list_bots,
             $crate::ipc::commands::set_active_bot,
             $crate::ipc::commands::get_bot_settings,

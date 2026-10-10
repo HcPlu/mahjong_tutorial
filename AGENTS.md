@@ -24,7 +24,7 @@
 5. **改模块行为必须同步更新该模块的 `README.md`。** 本仓库的一大资产是每个 `src/<module>/` 下真正的设计文档（不变量、陷阱、扩展方法），让它过期等于破坏文档。
 6. **前端用户可见字符串必须走 i18n**，四种 locale（`frontend/src/i18n/resources/{en,ja,zh-CN,zh-TW}.json`）都要补齐。`announcements/` 条目还要求日期严格降序。
 7. **许可证边界不可越。** Mortal 等 AGPL bot 必须留在子进程边界之后（`mjai_bot/` + JSONL stdio 协议），其代码不得链接进主程序。不提交任何密钥、token、bot 权重之外的二进制大文件。
-8. **教程功能的定位是教育。** 不新增、不增强"代打"（autoplay）能力；实时指导类功能必须可开关且默认不干扰对局（见 ROADMAP 非目标）。
+8. **教程功能的定位是教育。** 不开发新的"代打"（autoplay）能力或引擎（不做 MITM 帧注入式代打、不写新的点击自动化）；上游既有 autoplay 引擎可复用，允许为其提供便利 UI（如对局内开关，D-0011）；实时指导类功能必须可开关且默认不干扰对局（见 ROADMAP 非目标）。
 9. **LLM 接入必须走抽象层**（见 §6），API key 永远不进仓库、不进日志。
 
 ## 3. 架构速览（改代码前必读）
@@ -49,7 +49,7 @@ capture (MITM/CDP) → bridge::<platform> → MjaiBus → game_state::tracker
 | `src/game_state/` | riichienv 驱动的实时牌局镜像与快照 |
 | `src/analysis/` | 分析引擎（Go mahjong-helper 的 Rust 移植）：向听、待牌、和/听率、铳率、切牌搜索 |
 | `src/bot/` | bot 管理器：native 内置 bot / MJOT 云推理 / 外部 mjai 子进程；购买与许可 |
-| `src/autoplay/` | 把 bot 决策执行进真实客户端（CDP 模拟点击）——教程项目**只读不碰** |
+| `src/autoplay/` | 把 bot 决策执行进真实客户端（CDP 模拟点击）——引擎不改；fork 侧只为其加对局内开关（D-0011） |
 | `src/history/` | 对局历史持久化：`history/index.jsonl` + `games/<ulid>.mjai.jsonl` + 统计 |
 | `src/inspector/` | 协议帧 / 事件 / bot 反应（含 meta）的广播，供 Inspector UI |
 | `src/ipc/` | **唯一**接触 Tauri `AppHandle` 的模块：命令、事件转发、overlay 窗口 |
