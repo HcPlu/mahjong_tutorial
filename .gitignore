@@ -7,6 +7,10 @@ node_modules
 # Release-signing secret key (public half is tracked as minisign.pub)
 secrets/
 
+# Local LLM API keys for the tutorial module (never commit; consumed via
+# TUTORIAL_LLM_API_KEY or pasted into Settings)
+secret/
+
 # Claude
 .claude
 CLAUDE.md
