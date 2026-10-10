@@ -15,6 +15,7 @@ pub mod logger;
 pub mod platform;
 pub mod proxy;
 pub mod schema;
+pub mod tutorial;
 pub mod updater;
 pub mod util;
 
