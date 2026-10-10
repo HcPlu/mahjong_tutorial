@@ -109,6 +109,22 @@ pub fn run() {
     };
     info!("History store at {}", history_root.display());
 
+    // Tutorial (AI coaching) state — review cache + live coach cell.
+    // Same config-root placement as history; failure is fatal for
+    // symmetry (a broken config dir would have failed history above).
+    let tutorial_root = util::resolve_dir(Path::new("./tutorial"));
+    let tutorial = match tutorial::TutorialContext::new(tutorial_root.clone()) {
+        Ok(t) => std::sync::Arc::new(t),
+        Err(e) => {
+            error!(
+                "Failed to initialise tutorial store at {}: {e:#}",
+                tutorial_root.display()
+            );
+            return;
+        }
+    };
+    info!("Tutorial store at {}", tutorial_root.display());
+
     let bot_enabled = cfg.bot.enabled;
     let proxy_enabled = cfg.proxy.enabled;
     let autoplay_enabled = cfg.autoplay.enabled;
@@ -181,6 +197,7 @@ pub fn run() {
                     game_tracker,
                     analysis_cache,
                     history_store.clone(),
+                    tutorial.clone(),
                     history_platform.clone(),
                     runtime.clone(),
                 );

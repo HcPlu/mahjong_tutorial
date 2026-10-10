@@ -26,6 +26,7 @@
 //! The same flags drive the replay outline badges in the frontend.
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
 use crate::analysis::snapshot_adapter::to_player_info;
 use crate::analysis::{analyze, AnalysisResult, DiscardCandidate, Tile34};
@@ -183,6 +184,105 @@ pub fn build_review_material(
         player_name,
         turns,
     })
+}
+
+/// Replay `events[0..=upto]` through a private tracker (with the same
+/// `StartGame.id` injection as [`scan_decisions`]) and return the
+/// snapshot at that point. `None` when `upto` predates the first
+/// `StartGame`/`StartKyoku` (no game state yet).
+///
+/// Whole-stream replay per call is deliberate: a full game is a few
+/// thousand events at µs each, so per-step statefulness buys nothing and
+/// avoids cache-invalidation bugs.
+pub fn replay_snapshot_at(
+    events: &[MjaiEvent],
+    seat: u8,
+    upto: usize,
+) -> Result<Option<crate::game_state::snapshot::GameStateSnapshot>> {
+    if events.len() <= upto {
+        anyhow::bail!(
+            "event index {upto} out of range (stream has {})",
+            events.len()
+        );
+    }
+    let mut tracker = GameTracker::new();
+    for ev in events.iter().take(upto + 1) {
+        if let MjaiEvent::StartGame { id: None, .. } = ev {
+            let mut patched = ev.clone();
+            if let MjaiEvent::StartGame { id, .. } = &mut patched {
+                *id = Some(seat);
+            }
+            tracker.handle(&patched)?;
+        } else {
+            tracker.handle(ev)?;
+        }
+    }
+    Ok(tracker.snapshot())
+}
+
+/// Whether a snapshot is the observed seat's discard window (drew, must
+/// discard): our turn, waiting on an action, holding a 3k+2-length hand
+/// (14 tiles at zero melds; each meld shrinks the raw count by 3).
+pub fn is_discard_window(snap: &crate::game_state::snapshot::GameStateSnapshot, seat: u8) -> bool {
+    snap.current_player == seat
+        && matches!(snap.phase, crate::game_state::snapshot::Phase::WaitAct)
+        && snap
+            .players
+            .get(seat as usize)
+            .is_some_and(|p| p.tehai.len() % 3 == 2)
+}
+
+/// Lightweight scan summary for the frontend replay stepper: where the
+/// reviewed seat's decision points are and which are key turns.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ReplayOutline {
+    pub seat: u8,
+    pub num_players: u8,
+    pub total_events: u32,
+    pub decisions: Vec<OutlineDecision>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OutlineDecision {
+    /// Index of our draw (`Tsumo`) event in the stream.
+    pub event_index: u32,
+    pub junme: u32,
+    pub is_key: bool,
+}
+
+/// One replay step for the frontend: the snapshot at an event index,
+/// its pre-encoded mahgen view, and — when the index lands on the
+/// reviewed seat's discard window — the local analysis of that decision.
+///
+/// Serialize-only: `AnalysisResult` is not deserializable, and this type
+/// only ever travels backend → frontend.
+#[derive(Debug, Clone, Serialize)]
+pub struct ReplayStep {
+    pub snapshot: crate::game_state::snapshot::GameStateSnapshot,
+    pub mahgen: crate::game_state::mahgen_view::MahgenView,
+    pub analysis: Option<crate::analysis::result::AnalysisResult>,
+}
+
+impl ScanResult {
+    /// Collapse a scan into the IPC outline payload.
+    pub fn to_outline(&self, seat: u8, total_events: usize) -> ReplayOutline {
+        ReplayOutline {
+            seat,
+            num_players: self.num_players,
+            total_events: total_events as u32,
+            decisions: self
+                .decisions
+                .iter()
+                .map(|d| OutlineDecision {
+                    event_index: d.event_index,
+                    junme: d.junme,
+                    is_key: d.is_key,
+                })
+                .collect(),
+        }
+    }
 }
 
 /// Build one decision point from the tracker state *between* our draw
@@ -663,5 +763,27 @@ mod tests {
             ..split
         };
         assert!(!is_key_turn(&split_hidden));
+    }
+
+    #[test]
+    fn replay_snapshot_at_steps_through_the_stream() {
+        let events = small_game();
+        // Before the first draw: seat 0 holds 13 tiles, not a discard window.
+        let pre = replay_snapshot_at(&events, 0, 1).unwrap().unwrap();
+        assert!(!is_discard_window(&pre, 0));
+        // Right after our first Tsumo (index 2): 14 tiles, discard window.
+        let at_draw = replay_snapshot_at(&events, 0, 2).unwrap().unwrap();
+        assert!(is_discard_window(&at_draw, 0));
+        assert_eq!(at_draw.players[0].tehai.len(), 14);
+        // Injection: same stream, untagged StartGame, still sees real tiles.
+        assert!(!at_draw.players[0].tehai.iter().any(|t| t == "?"));
+        // Out of range is an error, not a panic.
+        assert!(replay_snapshot_at(&events, 0, events.len()).is_err());
+        // Outline carries decision indices and key flags.
+        let scan = scan_decisions(&events, 0).unwrap();
+        let outline = scan.to_outline(0, events.len());
+        assert_eq!(outline.total_events as usize, events.len());
+        assert_eq!(outline.decisions.len(), 2);
+        assert_eq!(outline.decisions[0].event_index, 2);
     }
 }

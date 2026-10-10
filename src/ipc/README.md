@@ -79,6 +79,15 @@ without waiting for the next event.
 Errors are returned as `String` so the frontend can put them straight
 into a toast.
 
+The history commands (`list_game_history`, `get_game_history_record`,
+`get_game_history_events`, `delete_game_history_entry`) and the tutorial
+commands (`tutorial_replay_outline`, `tutorial_replay_step`,
+`tutorial_get_review`, `tutorial_generate_review`,
+`tutorial_delete_review`) follow the same shape. The tutorial surface is
+a thin wrapper over `src/tutorial/` — the consent gate, review cache and
+anti-hallucination number checks live there (see that module's README);
+IPC only shuttles data and never re-implements those rules.
+
 ## Windows
 
 `overlay.rs` owns the app's second window: a frameless, transparent,

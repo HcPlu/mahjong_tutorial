@@ -24,6 +24,8 @@ use crate::schema::{
     InspectorEntry, LogEntry, LogSessionInfo, Notification, ReadInspectorRequest,
     ReadInspectorResponse, ReadLogRequest, ReadLogResponse, Snapshot,
 };
+use crate::tutorial::assemble::{ReplayOutline, ReplayStep};
+use crate::tutorial::material::{ReviewCoverage, ReviewDoc};
 use crate::util::resolve_dir;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -1361,6 +1363,154 @@ pub async fn delete_game_history_entry(id: String, state: State<'_, AppState>) -
     Ok(removed)
 }
 
+// ---------- Tutorial (AI coaching, fork-only) ----------
+//
+// Thin IPC surface over `src/tutorial/` (three-zone data flow, D-0007 /
+// D-0012). Replay + analysis is CPU/file work → spawn_blocking; the LLM
+// call inside `tutorial_generate_review` is awaited directly (async
+// reqwest). Every number the frontend sees here was computed by the
+// local analysis engine — the LLM only narrates.
+
+/// Replay outline for the tutorial page: where the reviewed seat's
+/// decision points sit and which are key turns. `None` when the id is
+/// unknown or has no event stream.
+#[tauri::command]
+pub async fn tutorial_replay_outline(
+    game_id: String,
+    state: State<'_, AppState>,
+) -> CmdResult<Option<ReplayOutline>> {
+    let store = state.history_store.clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<Option<ReplayOutline>> {
+        let Some(record) = store.get(&game_id)? else {
+            return Ok(None);
+        };
+        let Some(events) = store.get_events(&game_id)? else {
+            return Ok(None);
+        };
+        let seat = record.our_seat.unwrap_or(0);
+        let scan = crate::tutorial::scan_decisions(&events, seat)?;
+        Ok(Some(scan.to_outline(seat, events.len())))
+    })
+    .await
+    .map_err(|e| format!("tutorial outline join error: {e}"))?
+    .map_err(|e| format!("{e:#}"))
+}
+
+/// One replay step: the game snapshot at `event_index` (inclusive), its
+/// pre-encoded mahgen view, and — when the index lands on the reviewed
+/// seat's discard window — the full local analysis for that decision.
+#[tauri::command]
+pub async fn tutorial_replay_step(
+    game_id: String,
+    event_index: u32,
+    state: State<'_, AppState>,
+) -> CmdResult<Option<ReplayStep>> {
+    let store = state.history_store.clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<Option<ReplayStep>> {
+        let Some(record) = store.get(&game_id)? else {
+            return Ok(None);
+        };
+        let Some(events) = store.get_events(&game_id)? else {
+            return Ok(None);
+        };
+        let seat = record.our_seat.unwrap_or(0);
+        let Some(snap) =
+            crate::tutorial::assemble::replay_snapshot_at(&events, seat, event_index as usize)?
+        else {
+            return Ok(None);
+        };
+        let mahgen = MahgenView::from_snapshot(&snap);
+        let analysis = if crate::tutorial::assemble::is_discard_window(&snap, seat) {
+            crate::analysis::snapshot_adapter::to_player_info(&snap, seat)
+                .ok()
+                .map(|info| crate::analysis::analyze(&info))
+        } else {
+            None
+        };
+        Ok(Some(ReplayStep {
+            snapshot: snap,
+            mahgen,
+            analysis,
+        }))
+    })
+    .await
+    .map_err(|e| format!("tutorial step join error: {e}"))?
+    .map_err(|e| format!("{e:#}"))
+}
+
+/// The cached LLM review of a game, if one was generated before
+/// (`reviews/<ulid>.json`). Read-only; never touches the network.
+#[tauri::command]
+pub async fn tutorial_get_review(
+    game_id: String,
+    state: State<'_, AppState>,
+) -> CmdResult<Option<ReviewDoc>> {
+    let ctx = state.tutorial.clone();
+    tokio::task::spawn_blocking(move || ctx.store.load_review(&game_id))
+        .await
+        .map_err(|e| format!("tutorial get join error: {e}"))?
+        .map_err(|e| format!("{e:#}"))
+}
+
+/// Generate the LLM review of a recorded game (cache-first, consent-
+/// gated — see `tutorial::pipeline`). `coverage` picks key-turns-only
+/// (default) or every decision. On any failure the frontend falls back
+/// to the numbers-only replay; errors are user-readable strings.
+#[tauri::command]
+pub async fn tutorial_generate_review(
+    game_id: String,
+    coverage: Option<ReviewCoverage>,
+    state: State<'_, AppState>,
+) -> CmdResult<ReviewDoc> {
+    let coverage = coverage.unwrap_or(ReviewCoverage::Key);
+    let cfg = state.config.read().await.tutorial.clone();
+    let (seat, player_name, events) = {
+        let history = state.history_store.clone();
+        let gid = game_id.clone();
+        tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+            let Some(record) = history.get(&gid)? else {
+                anyhow::bail!("unknown game id {gid:?}");
+            };
+            let Some(events) = history.get_events(&gid)? else {
+                anyhow::bail!("no event stream recorded for game {gid:?}");
+            };
+            let seat = record.our_seat.unwrap_or(0);
+            let player_name = record.names.get(usize::from(seat)).cloned();
+            Ok((seat, player_name, events))
+        })
+        .await
+        .map_err(|e| format!("tutorial generate prep join error: {e}"))?
+        .map_err(|e| format!("{e:#}"))?
+    };
+    let ctx = state.tutorial.clone();
+    let outcome = crate::tutorial::pipeline::generate_review(
+        &cfg,
+        &ctx.store,
+        &events,
+        seat,
+        &game_id,
+        player_name,
+        coverage,
+    )
+    .await
+    .map_err(|e| format!("{e:#}"))?;
+    Ok(outcome.doc)
+}
+
+/// Drop the cached review so the next `tutorial_generate_review` runs
+/// the LLM again (regeneration). Returns true when a cache file existed.
+#[tauri::command]
+pub async fn tutorial_delete_review(
+    game_id: String,
+    state: State<'_, AppState>,
+) -> CmdResult<bool> {
+    let ctx = state.tutorial.clone();
+    tokio::task::spawn_blocking(move || ctx.store.delete_review(&game_id).map(|_| true))
+        .await
+        .map_err(|e| format!("tutorial delete join error: {e}"))?
+        .map_err(|e| format!("{e:#}"))
+}
+
 /// `shinkuan/Akagi` is the canonical upstream — kept here as a const
 /// instead of plumbing through config so the user can't accidentally
 /// point the auto-updater at a fork.
@@ -1827,6 +1977,11 @@ macro_rules! ipc_handlers {
             $crate::ipc::commands::native_api_subscription_result,
             $crate::ipc::commands::native_api_create_checkout,
             $crate::ipc::commands::native_api_checkout_result,
+            $crate::ipc::commands::tutorial_replay_outline,
+            $crate::ipc::commands::tutorial_replay_step,
+            $crate::ipc::commands::tutorial_get_review,
+            $crate::ipc::commands::tutorial_generate_review,
+            $crate::ipc::commands::tutorial_delete_review,
         ]
     };
 }
