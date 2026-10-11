@@ -288,9 +288,9 @@ export function Replay({ gameId, onExit }: Props) {
                   <CandidateChart
                     analysis={step.analysis}
                     actual={currentDecision?.actual ?? null}
-                    botPicks={
+                    botTurn={
                       currentDecision
-                        ? st.botRef?.turns.find((x) => x.junme === currentDecision.junme)?.picks ?? null
+                        ? st.botRef?.turns.find((x) => x.junme === currentDecision.junme) ?? null
                         : null
                     }
                   />

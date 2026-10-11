@@ -106,7 +106,17 @@ prompt 文本**——两处没有编译期联动，靠这条 README 约束。
 `src/bot/replay.rs`）：把整局录下的事件流按决策点批量喂给配置的子进程 bot
 （mortal），捕获每巡的 `meta.show` 候选概率，落盘为 `BotRefDoc`。纯本地
 推理、无 LLM、无 consent 门；一次生成永久缓存。前端候选图表据此渲染
-「Bot xx%」置信列与「Bot 首选」徽标。已验证：51 决策点全程数秒完成。
+「Bot xx%」置信列、「Bot 实选」徽标与每巡来源标记。已验证：51 决策点全程
+数秒完成。
+
+**来源标记（`BotRefTurn.source`）**：`replay.rs` 区分 bot 答案的出处——
+`model`（神经网络推理）、`rule_forced`（mortal quick_eval：唯一合法打牌，
+引擎跳过网络、反应不带 meta，**没有概率分布**，前端只标被强制的牌不显示
+概率）、`rule_overridden`（mortal agari guard：贪心首选非榜首＝被规则否决，
+榜首行照常显示但打的是次优）、`no_answer`。被选行由 `BotRefPick.chosen`
+标记（含红宝牌 aka 记法匹配）。判定依据与红线见
+[docs/design/mortal-internals.md](../../docs/design/mortal-internals.md) §5。
+旧缓存缺这两个字段（serde 默认），前端按无标记渲染。
 
 ## 配置示例
 

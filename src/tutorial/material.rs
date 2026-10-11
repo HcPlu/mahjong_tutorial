@@ -184,6 +184,24 @@ pub struct LiveTurnDoc {
     pub created_at: String,
 }
 
+/// How the bot produced a turn's action — tutorial-side mirror of
+/// `crate::bot::replay::ReplaySource` (ipc maps between them; the
+/// tutorial layer stays free of bot imports).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BotRefSource {
+    /// Neural-net inference picked the action.
+    #[default]
+    Model,
+    /// Rules forced the only legal action (no probability
+    /// distribution exists).
+    RuleForced,
+    /// A rule guard overrode the net's top choice (e.g. agari guard).
+    RuleOverridden,
+    /// No usable answer at this window.
+    NoAnswer,
+}
+
 /// One bot-recommended tile with its policy probability (offline
 /// replay, `crate::bot::replay`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -193,6 +211,9 @@ pub struct BotRefPick {
     pub tile: String,
     pub label: String,
     pub prob: f64,
+    /// True on the row the bot actually played (absent in caches
+    /// written before the field existed).
+    pub chosen: bool,
 }
 
 /// The bot reference for one of our decision points.
@@ -203,6 +224,9 @@ pub struct BotRefTurn {
     /// The bot's action, mjai-style label (`dahai:5s`, `reach`, ...).
     pub action: String,
     pub picks: Vec<BotRefPick>,
+    /// Whether the action came from the model or a rule fast path
+    /// (absent in caches written before the field existed).
+    pub source: Option<BotRefSource>,
 }
 
 /// Persisted bot-reference artifact for one game ("what would the bot

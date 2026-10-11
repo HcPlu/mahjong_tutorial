@@ -236,7 +236,11 @@
     "bot_ref_hint": "Replay this game through the configured bot (mortal) offline and show its probabilities per candidate",
     "bot_ref_done": "{{bot}} ✓",
     "bot_prob": "Bot {{p}}%",
-    "bot_pick": "Bot top"
+    "bot_pick": "Bot top",
+    "bot_chosen": "Bot played",
+    "bot_source_model": "Bot: model pick",
+    "bot_source_rule_forced": "Bot: rule-forced (no distribution)",
+    "bot_source_rule_overridden": "Bot: rule overrode model's top"
   },
   "coach": {
     "disabled": "Coach is off — enable it in Settings → AI Tutorial.",

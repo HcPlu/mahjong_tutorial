@@ -8,12 +8,13 @@
 
 use anyhow::{bail, Context, Result};
 
+use crate::bot::replay::ReplaySource;
 use crate::bot::PythonRuntime;
 use crate::config::AppConfig;
 use crate::event_bus::NotifyBus;
 use crate::history::HistoryStore;
 use crate::schema::MjaiEvent;
-use crate::tutorial::material::{BotRefDoc, BotRefPick, BotRefTurn};
+use crate::tutorial::material::{BotRefDoc, BotRefPick, BotRefSource, BotRefTurn};
 use crate::tutorial::store::TutorialStore;
 use crate::util::resolve_dir;
 use std::path::Path;
@@ -89,8 +90,10 @@ pub async fn generate_bot_reference(
                         tile: p.tile.clone(),
                         label: p.label.clone(),
                         prob: p.prob,
+                        chosen: p.chosen,
                     })
                     .collect(),
+                source: Some(map_source(r.source)),
             })
         })
         .collect();
@@ -122,6 +125,18 @@ fn action_label(ev: &MjaiEvent) -> String {
             .ok()
             .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(String::from))
             .unwrap_or_else(|| "other".into()),
+    }
+}
+
+/// `bot::replay`'s classification → the tutorial-side enum. The two
+/// live on opposite sides of the bot/tutorial boundary and must stay
+/// variant-for-variant in sync (this match has no `_` arm on purpose).
+fn map_source(source: ReplaySource) -> BotRefSource {
+    match source {
+        ReplaySource::Model => BotRefSource::Model,
+        ReplaySource::RuleForced => BotRefSource::RuleForced,
+        ReplaySource::RuleOverridden => BotRefSource::RuleOverridden,
+        ReplaySource::NoAnswer => BotRefSource::NoAnswer,
     }
 }
 

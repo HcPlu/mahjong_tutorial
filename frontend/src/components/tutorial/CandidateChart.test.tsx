@@ -63,7 +63,7 @@ describe('CandidateChart', () => {
     expect(screen.getByText('tutorial.engine_best')).toBeTruthy()
   })
 
-  it('shows bot probabilities and the bot-top badge when a reference exists', () => {
+  it('shows bot probabilities and the chosen badge when the model picked a row', () => {
     const a = analysis([
       cand('P', { waits_total: 53, mixed_waits_score: 88.8 }),
       cand('C', { waits_total: 53, mixed_waits_score: 88.8 }),
@@ -72,14 +72,67 @@ describe('CandidateChart', () => {
       <CandidateChart
         analysis={a}
         actual={null}
-        botPicks={[
-          { tile: 'C', label: 'Discard', prob: 0.55 },
-          { tile: 'P', label: 'Discard', prob: 0.3 },
-        ]}
+        botTurn={{
+          junme: 1,
+          action: 'dahai:C',
+          source: 'model',
+          picks: [
+            { tile: 'C', label: 'Discard', prob: 0.55, chosen: true },
+            { tile: 'P', label: 'Discard', prob: 0.3 },
+          ],
+        }}
       />,
     )
     expect(screen.getAllByText('tutorial.bot_prob').length).toBe(2) // both rows carry a bot prob
-    expect(screen.getAllByText('tutorial.bot_pick').length).toBe(1) // C only
+    // Chosen == top here, so only the chosen badge renders (not both).
+    expect(screen.getAllByText('tutorial.bot_chosen').length).toBe(1)
+    expect(screen.queryByText('tutorial.bot_pick')).toBeNull()
+    // Turn-level provenance badge.
+    expect(screen.getByText('tutorial.bot_source_model')).toBeTruthy()
+  })
+
+  it('shows top and chosen badges separately when a rule overrode the model', () => {
+    const a = analysis([
+      cand('P', { waits_total: 53, mixed_waits_score: 88.8 }),
+      cand('C', { waits_total: 53, mixed_waits_score: 88.8 }),
+    ])
+    render(
+      <CandidateChart
+        analysis={a}
+        actual={null}
+        botTurn={{
+          junme: 1,
+          action: 'dahai:C',
+          source: 'rule_overridden',
+          picks: [
+            { tile: 'P', label: 'Discard', prob: 0.6 },
+            { tile: 'C', label: 'Discard', prob: 0.3, chosen: true },
+          ],
+        }}
+      />,
+    )
+    expect(screen.getAllByText('tutorial.bot_pick').length).toBe(1) // P: the net's rank-1
+    expect(screen.getAllByText('tutorial.bot_chosen').length).toBe(1) // C: what was played
+    expect(screen.getByText('tutorial.bot_source_rule_overridden')).toBeTruthy()
+  })
+
+  it('marks the forced tile without inventing a probability on rule-forced turns', () => {
+    const a = analysis([
+      cand('P', { waits_total: 53, mixed_waits_score: 88.8 }),
+      cand('C', { waits_total: 53, mixed_waits_score: 88.8 }),
+    ])
+    render(
+      <CandidateChart
+        analysis={a}
+        actual={null}
+        botTurn={{ junme: 1, action: 'dahai:P', source: 'rule_forced', picks: [] }}
+      />,
+    )
+    // No distribution exists → no bot prob on any row, but the forced
+    // tile is still marked as what the bot played.
+    expect(screen.queryByText('tutorial.bot_prob')).toBeNull()
+    expect(screen.getAllByText('tutorial.bot_chosen').length).toBe(1)
+    expect(screen.getByText('tutorial.bot_source_rule_forced')).toBeTruthy()
   })
 
   it('renders live metrics as percentages when the turn has signal', () => {

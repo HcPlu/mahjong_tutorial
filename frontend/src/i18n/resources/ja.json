@@ -236,7 +236,11 @@
     "bot_ref_hint": "この対局を設定したBot（mortal）でオフライン再生し、候補ごとの確率を表示",
     "bot_ref_done": "{{bot}} ✓",
     "bot_prob": "Bot {{p}}%",
-    "bot_pick": "Bot第一位"
+    "bot_pick": "Bot第一位",
+    "bot_chosen": "Bot採用",
+    "bot_source_model": "Bot：モデル直接",
+    "bot_source_rule_forced": "Bot：ルール強制（候補分布なし）",
+    "bot_source_rule_overridden": "Bot：ルールがモデル第一位を却下"
   },
   "coach": {
     "disabled": "コーチはオフです。設定 → AIチュートリアル で有効にしてください。",

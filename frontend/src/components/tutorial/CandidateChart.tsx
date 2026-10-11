@@ -11,20 +11,20 @@ import { useTranslation } from 'react-i18next'
 
 import { Mahgen } from '@/components/Mahgen'
 import { mjaiToMahgen, tileIdx } from '@/lib/tileIdx'
-import type { BotRefPick } from '@/components/tutorial/types'
+import type { BotRefSource, BotRefTurn } from '@/components/tutorial/types'
 import type { AnalysisResult, DiscardCandidate } from '@/types'
 
 type Props = {
   analysis: AnalysisResult
   /** The student's actual discard this turn (mjai tile), when known. */
   actual: string | null
-  /** Bot probabilities for this turn (offline replay), when generated. */
-  botPicks?: BotRefPick[] | null
+  /** Bot reference for this turn (offline replay), when generated. */
+  botTurn?: BotRefTurn | null
 }
 
 const MAX_ROWS = 5
 
-export function CandidateChart({ analysis, actual, botPicks }: Props) {
+export function CandidateChart({ analysis, actual, botTurn }: Props) {
   const maintain = analysis.hand14?.maintain?.slice(0, MAX_ROWS) ?? []
   if (maintain.length === 0) return null
   const best = analysis.best_attack_discard
@@ -34,22 +34,55 @@ export function CandidateChart({ analysis, actual, botPicks }: Props) {
   // tenpai threat), and a wall of "0%" reads as broken.
   const winLive = maintain.some((c) => c.result.avg_agari_rate > 0)
   const riskLive = risks.some((r) => (r ?? 0) > 0)
+  const picks = botTurn?.picks ?? null
+  // A rule-forced turn has no distribution; the forced tile rides only
+  // in the action label ("dahai:5s").
+  const forcedTile =
+    botTurn?.source === 'rule_forced' && botTurn.action.startsWith('dahai:')
+      ? botTurn.action.slice('dahai:'.length)
+      : null
 
   return (
     <div className="space-y-1.5">
-      {maintain.map((c, i) => (
-        <CandidateRow
-          key={c.discard}
-          cand={c}
-          risk={risks[i]}
-          winLive={winLive}
-          riskLive={riskLive}
-          isActual={actual !== null && c.discard === actual}
-          isBest={best !== null && c.discard === best}
-          botProb={botPicks?.find((p) => p.tile === c.discard)?.prob ?? null}
-          isBotTop={botPicks != null && botPicks.length > 0 && botPicks[0].tile === c.discard}
-        />
-      ))}
+      <SourceBadge source={botTurn?.source ?? null} />
+      {maintain.map((c, i) => {
+        const botPick = picks?.find((p) => p.tile === c.discard) ?? null
+        const isBotChosen = botPick?.chosen === true || forcedTile === c.discard
+        return (
+          <CandidateRow
+            key={c.discard}
+            cand={c}
+            risk={risks[i]}
+            winLive={winLive}
+            riskLive={riskLive}
+            isActual={actual !== null && c.discard === actual}
+            isBest={best !== null && c.discard === best}
+            botProb={botPick?.prob ?? null}
+            isBotTop={picks != null && picks.length > 0 && picks[0].tile === c.discard}
+            isBotChosen={isBotChosen}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+/** Turn-level provenance of the bot's answer — the whole point is that
+ *  a rule fast path carries no probability distribution to trust. */
+function SourceBadge({ source }: { source: BotRefSource | null }) {
+  const { t } = useTranslation()
+  if (source == null || source === 'no_answer') return null
+  const style =
+    source === 'model'
+      ? 'border-border text-muted-foreground'
+      : source === 'rule_forced'
+        ? 'border-amber-500/40 text-amber-600 dark:text-amber-400'
+        : 'border-red-500/40 text-red-600 dark:text-red-400'
+  return (
+    <div className="flex justify-end">
+      <span className={'rounded border px-1.5 py-0.5 text-[10px] ' + style}>
+        {t(`tutorial.bot_source_${source}`)}
+      </span>
     </div>
   )
 }
@@ -63,6 +96,7 @@ function CandidateRow({
   isBest,
   botProb,
   isBotTop,
+  isBotChosen,
 }: {
   cand: DiscardCandidate
   /** Deal-in risk for the discarded tile, 0..1 (mixed risk / 100). */
@@ -74,6 +108,9 @@ function CandidateRow({
   /** Bot's probability for this exact tile, when a reference exists. */
   botProb: number | null
   isBotTop: boolean
+  /** The action the bot actually played this turn (model pick, guard
+   *  override, or rule-forced discard). */
+  isBotChosen: boolean
 }) {
   const { t } = useTranslation()
   const r = cand.result
@@ -123,7 +160,12 @@ function CandidateRow({
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
         {botProb !== null && (
-          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+          <span
+            className={
+              'font-mono text-[10px] tabular-nums ' +
+              (isBotChosen ? 'font-semibold text-violet-600 dark:text-violet-400' : 'text-muted-foreground')
+            }
+          >
             {t('tutorial.bot_prob', { p: Math.round(botProb * 100) })}
           </span>
         )}
@@ -137,10 +179,19 @@ function CandidateRow({
             {t('tutorial.engine_best')}
           </span>
         )}
-        {isBotTop && (
-          <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
-            {t('tutorial.bot_pick')}
+        {isBotChosen ? (
+          <span className="rounded bg-violet-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            {t('tutorial.bot_chosen')}
           </span>
+        ) : (
+          /* Rank-1 candidate only gets its own badge when the bot
+           * played something else (guard override / sampling) —
+           * otherwise the chosen badge already says it. */
+          isBotTop && (
+            <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+              {t('tutorial.bot_pick')}
+            </span>
+          )
         )}
       </div>
     </div>

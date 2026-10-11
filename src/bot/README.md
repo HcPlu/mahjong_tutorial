@@ -38,6 +38,17 @@ bridge to them.
   forwarded onto the `NotifyBus` (→ `notify` Tauri event → bottom-right
   toast); every other line is logged as before, and a malformed payload
   after the prefix is dropped with a `warn!`.
+- `replay` — fork-only offline replay of a recorded event stream through
+  a subprocess bot (`walk_decisions`: one react per own-draw decision
+  point), capturing each answer plus its `meta.show` candidates for the
+  tutorial's "what would the bot have done" reference. `classify_reaction`
+  labels every answer `Model` / `RuleForced` / `RuleOverridden` /
+  `NoAnswer` and flags the candidate row the bot actually played:
+  mortal's quick_eval answers carry no `meta` (= rule-forced, no
+  probability distribution exists), and a greedy answer that is not the
+  ranked top row means a rule guard (agari guard) overrode the net —
+  see `docs/design/mortal-internals.md` §5. Consumed by
+  `src/ipc/tutorial_botref.rs` (never by `src/tutorial/` directly).
 - `manager` — `BotManager`: subscribes to the **post-tracker bus**,
   accumulates events between decision points, flushes the pending batch
   through the `BotRunner`, and broadcasts every `BotResponse` (including

@@ -27,7 +27,7 @@ pub use install::{install_from_github_release, GithubInstallSpec};
 pub use manager::BotManager;
 pub use manifest::{BotSource, FieldKind, FieldSpec, Manifest, ManifestBot};
 pub use registry::{BotEntry, BotRegistry};
-pub use replay::{ReplayDecision, ReplayPick};
+pub use replay::{ReplayDecision, ReplayPick, ReplaySource};
 pub use runner::{BotRunner, SubprocessBot};
 pub use runtime::{PythonRuntime, RuntimeMode};
 pub use supervisor::run_bot_manager;

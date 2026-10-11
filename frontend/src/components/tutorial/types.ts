@@ -55,12 +55,19 @@ export type ReplayStep = {
 
 // --- Bot reference (offline replay, D-0012 M4-lite) ---
 
+/** How the bot produced a turn's action (model vs rule fast path).
+ *  Wire values from `src/tutorial/material.rs::BotRefSource`. */
+export type BotRefSource = 'model' | 'rule_forced' | 'rule_overridden' | 'no_answer'
+
 export type BotRefPick = {
   /** Mjai tile string (e.g. '5s'). */
   tile: string
   label: string
   /** Bot policy probability, 0..1. */
   prob: number
+  /** True on the row the bot actually played. Absent in caches written
+   *  before the field existed. */
+  chosen?: boolean
 }
 
 export type BotRefTurn = {
@@ -68,6 +75,9 @@ export type BotRefTurn = {
   /** Bot action label ('dahai:5s', 'reach', 'none', ...). */
   action: string
   picks: BotRefPick[]
+  /** Whether the action came from the model or a rule fast path.
+   *  Absent in caches written before the field existed. */
+  source?: BotRefSource | null
 }
 
 export type BotRefDoc = {

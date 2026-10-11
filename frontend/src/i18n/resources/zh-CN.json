@@ -236,7 +236,11 @@
     "bot_ref_hint": "用配置的 bot（mortal）离线重放这局，显示每个候选的 bot 置信",
     "bot_ref_done": "{{bot}} ✓",
     "bot_prob": "Bot {{p}}%",
-    "bot_pick": "Bot 首选"
+    "bot_pick": "Bot 首选",
+    "bot_chosen": "Bot 实选",
+    "bot_source_model": "Bot：模型直出",
+    "bot_source_rule_forced": "Bot：规则强制（无候选分布）",
+    "bot_source_rule_overridden": "Bot：规则否决模型首选"
   },
   "coach": {
     "disabled": "教练未开启——在设置 → AI 教程 中打开。",

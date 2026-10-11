@@ -236,7 +236,11 @@
     "bot_ref_hint": "用設定的 bot（mortal）離線重播這局，顯示每個候選的 bot 置信",
     "bot_ref_done": "{{bot}} ✓",
     "bot_prob": "Bot {{p}}%",
-    "bot_pick": "Bot 首選"
+    "bot_pick": "Bot 首選",
+    "bot_chosen": "Bot 實選",
+    "bot_source_model": "Bot：模型直出",
+    "bot_source_rule_forced": "Bot：規則強制（無候選分佈）",
+    "bot_source_rule_overridden": "Bot：規則否決模型首選"
   },
   "coach": {
     "disabled": "教練未開啟——在設定 → AI 教學 中打開。",
