@@ -1028,6 +1028,12 @@
     "auto_on_title": "オート打牌を有効にする",
     "auto_off_title": "オート打牌が有効です。クリックでオフ",
     "close": "オーバーレイを閉じる",
-    "empty": "AI の判断を待っています…"
+    "empty": "AI の判断を待っています…",
+    "explain_label": "解説",
+    "explain_on_title": "毎決断の自動解説を有効にする",
+    "explain_off_title": "自動解説が有効です。クリックでオフ",
+    "explain_turn": "第 {{junme}} 巡",
+    "explain_pending": "解説を生成中…",
+    "explain_unconfigured": "自動解説はオンですが、クラウド LLM が未設定または未許可です。設定の AI チュートリアルで有効にしてください"
   }
 }

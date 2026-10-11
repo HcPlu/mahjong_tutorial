@@ -64,6 +64,7 @@ without waiting for the next event.
 | `update_config`  | `new_config`          | `()`                     | Persists to TOML; subsystems do **not** auto-restart. Does reconcile the overlay window against `overlay.*` |
 | `set_overlay_enabled` | `enabled`        | `()`                     | Flips + persists `overlay.enabled` and opens/closes the window. Exists so the overlay's own close button doesn't have to round-trip a whole `AppConfig` |
 | `set_autoplay_enabled` | `enabled`       | `()`                     | Flips + persists `autoplay.enabled` and spawns the once-per-process autoplay manager on the false→true transition. The in-game overlay's Auto toggle; the manager re-reads the flag every decision, so it takes effect on the very next bot reply |
+| `set_coach_auto`  | `enabled`             | `()`                     | The overlay's explain toggle. `true` sets `[tutorial.coach] enabled + auto_policy = "all"`, `false` drops only the policy back to manual. The live coach re-reads config per decision and per queued job, so the flip lands on the next draw |
 | `list_bots`      | —                     | `Vec<BotInfo>`           | Re-scans `cfg.bot.dir`       |
 | `set_active_bot` | `mode, name`          | `()`                     | Updates + persists `bot.active_4p` or `bot.active_3p` (`mode` ∈ `"4p"` / `"3p"`); empty `name` clears the slot |
 | `install_bot_from_github` | `repo, asset_glob?, name?` | `BotInfo`     | Download + extract; runs `uv sync` post-install if a runtime is available |

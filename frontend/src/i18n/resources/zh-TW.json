@@ -1028,6 +1028,12 @@
     "auto_on_title": "開啟代打",
     "auto_off_title": "代打已開啟，點擊關閉",
     "close": "關閉懸浮視窗",
-    "empty": "等待 AI 建議…"
+    "empty": "等待 AI 建議…",
+    "explain_label": "講解",
+    "explain_on_title": "開啟每次決策自動講解",
+    "explain_off_title": "自動講解已開啟，點擊關閉",
+    "explain_turn": "第 {{junme}} 巡",
+    "explain_pending": "講解生成中…",
+    "explain_unconfigured": "自動講解已開啟，但雲端 LLM 未設定或未允許呼叫——請在設定的 AI 教學中開啟"
   }
 }

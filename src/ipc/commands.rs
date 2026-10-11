@@ -11,7 +11,7 @@ use crate::bot::manifest::{self, BotSource};
 use crate::bot::runtime;
 use crate::bot::sync_guard::SyncGuard;
 use crate::bot::{BotEntry, BotRegistry};
-use crate::config::AppConfig;
+use crate::config::{AppConfig, AutoPolicy};
 use crate::game_state::mahgen_view::MahgenView;
 use crate::game_state::snapshot::GameStateSnapshot;
 use crate::ipc::capture_supervisor::{
@@ -259,6 +259,37 @@ pub async fn set_autoplay_enabled(enabled: bool, state: State<'_, AppState>) -> 
     if claim_autoplay_manager_spawn(enabled, &state.autoplay_manager_started) {
         spawn_autoplay_manager_task(&state);
     }
+    Ok(())
+}
+
+/// Field-flip behind the overlay's explain toggle. `true` turns the coach
+/// master switch on AND sets every-decision auto generation (auto is a
+/// no-op without the master switch); `false` only returns the policy to
+/// the manual button — the master switch survives so the template layer
+/// keeps working.
+fn apply_coach_auto(cfg: &mut AppConfig, enabled: bool) {
+    if enabled {
+        cfg.tutorial.coach.enabled = true;
+        cfg.tutorial.coach.auto_policy = AutoPolicy::All;
+    } else {
+        cfg.tutorial.coach.auto_policy = AutoPolicy::Off;
+    }
+}
+
+/// Flip the in-game auto explanations — the overlay's explain toggle, so
+/// switching it mid-game never requires a Settings round-trip.
+///
+/// The live coach re-reads the config on every bot response and again per
+/// queued job, so the flip lands on the very next decision — no change
+/// event needed (same reasoning as [`set_autoplay_enabled`]).
+#[tauri::command]
+pub async fn set_coach_auto(enabled: bool, state: State<'_, AppState>) -> CmdResult<()> {
+    let cfg = {
+        let mut cfg = state.config.write().await;
+        apply_coach_auto(&mut cfg, enabled);
+        cfg.clone()
+    };
+    persist_config(&cfg, &state.config_path).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -2083,6 +2114,7 @@ macro_rules! ipc_handlers {
             $crate::ipc::commands::update_config,
             $crate::ipc::commands::set_overlay_enabled,
             $crate::ipc::commands::set_autoplay_enabled,
+            $crate::ipc::commands::set_coach_auto,
             $crate::ipc::commands::list_bots,
             $crate::ipc::commands::set_active_bot,
             $crate::ipc::commands::get_bot_settings,
@@ -2188,6 +2220,26 @@ mod tests {
         assert_eq!(back.bot.active_4p, "mortal");
         assert_eq!(back.bot.active_3p, "mortal_3p");
         assert_eq!(back.proxy.addr, "127.0.0.1:9999");
+    }
+
+    /// The overlay's explain toggle: on = coach master + every-decision
+    /// auto (auto is a no-op without the master switch); off = policy back
+    /// to manual while the master survives for the template layer.
+    #[test]
+    fn apply_coach_auto_on_sets_both_off_keeps_master() {
+        let mut cfg = AppConfig::default();
+        assert!(!cfg.tutorial.coach.enabled);
+
+        apply_coach_auto(&mut cfg, true);
+        assert!(cfg.tutorial.coach.enabled);
+        assert_eq!(cfg.tutorial.coach.auto_policy, AutoPolicy::All);
+
+        apply_coach_auto(&mut cfg, false);
+        assert!(
+            cfg.tutorial.coach.enabled,
+            "turning auto off must not kill the coach master switch"
+        );
+        assert_eq!(cfg.tutorial.coach.auto_policy, AutoPolicy::Off);
     }
 
     /// Regression: a save used to serialise `AppConfig` over the whole file,

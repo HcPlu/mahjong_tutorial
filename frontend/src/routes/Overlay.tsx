@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { BotShowList } from '@/components/BotShowList'
+import { getTutorialConfig, outboundAllowed } from '@/components/tutorial/configGate'
+import { tileNamesZh } from '@/components/tutorial/tileText'
+import type { TutorialLiveEvent, TurnDoc } from '@/components/tutorial/types'
 import { pickShow, visibleItems } from '@/lib/botShow'
 import { invoke, listen } from '@/lib/tauri'
 import type { AppConfig, BotResponse, OverlayConfig, ShowMeta } from '@/types'
@@ -30,6 +33,10 @@ export function Overlay() {
   const [show, setShow] = useState<ShowMeta | null>(null)
   const [cfg, setCfg] = useState<OverlayConfig>(FALLBACK)
   const [auto, setAuto] = useState(false)
+  const [coachAuto, setCoachAuto] = useState(false)
+  const [canOutbound, setCanOutbound] = useState(false)
+  const [autoDoc, setAutoDoc] = useState<TurnDoc | null>(null)
+  const [autoPending, setAutoPending] = useState(false)
 
   useEffect(() => {
     const unlistens: Array<() => void> = []
@@ -38,6 +45,9 @@ export function Overlay() {
     const refreshConfig = (c: AppConfig) => {
       setCfg(c.overlay)
       setAuto(c.autoplay?.enabled ?? false)
+      const tcfg = getTutorialConfig(c)
+      setCoachAuto(tcfg.coach.auto_policy === 'all')
+      setCanOutbound(outboundAllowed(tcfg))
     }
 
     // The window is opened by the backend, so config is already on disk;
@@ -57,6 +67,17 @@ export function Overlay() {
       // Responses without a `show` block (e.g. a bare `none`) must not wipe
       // the last real suggestion off the screen.
       if (s) setShow(s)
+      // A bot reply marks a fresh decision point: with auto explanations
+      // on, this draw's generation is now in flight.
+      setAutoPending(true)
+    }).then((u) => unlistens.push(u))
+
+    // Auto-generated live explanation arrived (fork): rendered under the
+    // suggestions. Labeled with its junme so one still waiting for the
+    // next decision reads as clearly belonging to that turn.
+    listen<TutorialLiveEvent>('tutorial-live-turn', (ev) => {
+      setAutoDoc(ev.doc)
+      setAutoPending(false)
     }).then((u) => unlistens.push(u))
 
     listen<OverlayConfig>('overlay-config', () => {
@@ -99,6 +120,25 @@ export function Overlay() {
     })
   }
 
+  // Explain toggle: one click = coach on + one explanation per decision
+  // (`set_coach_auto`). Same optimistic-with-convergence shape as the
+  // autoplay toggle. Enabling also clears the pending flag — the backend
+  // only queues on the *next* bot reply, so nothing is in flight yet.
+  const toggleExplain = () => {
+    const next = !coachAuto
+    setCoachAuto(next)
+    if (next) setAutoPending(false)
+    invoke('set_coach_auto', { enabled: next }).catch(() => {
+      invoke<AppConfig>('get_config')
+        .then((c) => {
+          const tcfg = getTutorialConfig(c)
+          setCoachAuto(tcfg.coach.auto_policy === 'all')
+          setCanOutbound(outboundAllowed(tcfg))
+        })
+        .catch(() => setCoachAuto(!next))
+    })
+  }
+
   return (
     <div
       data-tauri-drag-region
@@ -116,6 +156,22 @@ export function Overlay() {
           <span className="flex-1 truncate text-[11px] font-medium text-muted-foreground">
             {show?.title ?? t('tile.bot_show_default_title')}
           </span>
+          <button
+            type="button"
+            onClick={toggleExplain}
+            aria-pressed={coachAuto}
+            aria-label={coachAuto ? t('overlay.explain_off_title') : t('overlay.explain_on_title')}
+            title={coachAuto ? t('overlay.explain_off_title') : t('overlay.explain_on_title')}
+            className={
+              'shrink-0 cursor-pointer rounded border px-1.5 py-px text-[10px] font-semibold tracking-wide ' +
+              (coachAuto
+                ? 'border-violet-500/60 bg-violet-500/15 text-violet-500'
+                : 'border-border text-muted-foreground hover:text-foreground')
+            }
+            style={{ pointerEvents: 'auto' }}
+          >
+            {t('overlay.explain_label')}
+          </button>
           <button
             type="button"
             onClick={toggleAuto}
@@ -154,6 +210,46 @@ export function Overlay() {
             <BotShowList items={items} variant="overlay" />
           )}
         </div>
+
+        {/* Auto-explanation panel (fork): the latest LLM deep-dive for the
+            current decision, under the suggestions. shrink-0 so the list
+            above gives up the height, not the window. */}
+        {coachAuto && (
+          <div
+            className="shrink-0 border-t border-border px-2 pt-1 pb-1.5"
+            data-testid="overlay-explain-panel"
+          >
+            {autoDoc ? (
+              <div data-testid="overlay-explain-doc">
+                <p className="text-[10px] font-medium text-muted-foreground">
+                  {t('overlay.explain_turn', { junme: autoDoc.junme })}
+                </p>
+                {autoDoc.headline && (
+                  <p className="text-[11px] font-semibold leading-snug">
+                    {tileNamesZh(autoDoc.headline)}
+                  </p>
+                )}
+                <p className="line-clamp-4 text-[11px] leading-snug text-muted-foreground">
+                  {tileNamesZh(autoDoc.explanation_zh)}
+                </p>
+              </div>
+            ) : (
+              autoPending && (
+                <p
+                  className="text-[11px] text-muted-foreground"
+                  data-testid="overlay-explain-pending"
+                >
+                  {t('overlay.explain_pending')}
+                </p>
+              )
+            )}
+            {!canOutbound && (
+              <p className="text-[10px] leading-snug text-muted-foreground">
+                {t('overlay.explain_unconfigured')}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

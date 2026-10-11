@@ -5,6 +5,16 @@
 
 ---
 
+## D-0018 · 讲解进悬浮窗：前三选下方讲解面板 + 「讲解」一键自动开关
+
+- **背景**：live-coach.md §6 曾把 overlay 呈现列为 v1 后续项。仓库主人 2026-10-11 实际使用后反馈：仪表盘的实时讲解磁贴默认隐藏、不易发现（需手动「添加磁贴」），要求把讲解直接做进**悬浮窗**——前三选（bot 建议列表）下方显示解释，并加一个按钮，点了就默认**每次决策都自动生成**。
+- **决定**：
+  1. **呈现**：`routes/Overlay.tsx` 订阅 `tutorial-live-turn`（事件本就经 `app.emit` 全窗口广播，capability 已含 `core:event:default`，不动 overlay 三件套），在 `BotShowList` 下方渲染面板：「第N巡」+ 标题 + 正文（`tileNamesZh` 中文牌名、`line-clamp-4` 限高）；bot-response 置「生成中」pending，事件到达替换；LLM 未配置/未同意出网时显示指向设置的提示。
+  2. **一键开关**：新 IPC 命令 `set_coach_auto(enabled)`（紧邻 `set_autoplay_enabled` 的同款 lock→flip→persist 范式）：开 = `[tutorial.coach] enabled=true + auto_policy="all"`（自动必须带总开关）；关 = 仅 `auto_policy` 降回 `off`，总开关保留（模板层不受影响）。`drive_loop` 每决策现读 config、worker 每 job 再核对，翻转下一次决策即生效，无需变更事件。按钮乐观更新、失败收敛回真实配置。
+  3. 悬浮窗按钮状态以 `auto_policy == "all"` 为准（开启态必然蕴含 enabled）。
+- **理由**：悬浮窗是玩家对局时真正盯着的地方，讲解放那里才符合「实时教学」的产品目的；`set_autoplay_enabled` 已验证跨窗口单字段开关的范式，复制它比让 overlay 走完整 `update_config` round-trip 更不易与设置页的草稿保存互相踩。
+- **代价**：overlay 多一块固定高度区域（列表 `min-h-0 flex-1` 让位，窗口不会撑爆）；讲解面板与主窗口 coach 磁贴共享同一配置，悬浮窗开自动会让磁贴同步进入自动模式（视为特性而非问题）；`set_coach_auto` 关闭态不回收 `coach.enabled`，想彻底关教练仍走设置页。
+
 ## D-0017 · 对局时顺带记录 bot 应答（botlive），复盘区分「对局 bot」与「复盘 bot」
 
 - **背景**：仓库主人 2026-10-11 指出：复盘页的 bot 参照是复盘时用**当前配置的** bot 重放的，与**对局当时实际在打**的 bot 可能不同（换 bot、换权重、换温度），混为一谈会误导教学；要求对局过程中直接把 bot 的每次应答（动作 + meta.show 候选分布）记录下来，复盘时两种参照并存且明确区分。

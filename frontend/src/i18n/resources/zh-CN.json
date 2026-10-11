@@ -1028,6 +1028,12 @@
     "auto_on_title": "开启代打",
     "auto_off_title": "代打已开启，点击关闭",
     "close": "关闭悬浮窗",
-    "empty": "等待 AI 建议…"
+    "empty": "等待 AI 建议…",
+    "explain_label": "讲解",
+    "explain_on_title": "开启每次决策自动讲解",
+    "explain_off_title": "自动讲解已开启，点击关闭",
+    "explain_turn": "第 {{junme}} 巡",
+    "explain_pending": "讲解生成中…",
+    "explain_unconfigured": "自动讲解已开启，但云端 LLM 未配置或未允许调用——请在设置的 AI 教程中开启"
   }
 }

@@ -1028,6 +1028,12 @@
     "auto_on_title": "Enable autoplay",
     "auto_off_title": "Autoplay is on — click to turn off",
     "close": "Close overlay",
-    "empty": "Waiting for the bot…"
+    "empty": "Waiting for the bot…",
+    "explain_label": "Explain",
+    "explain_on_title": "Auto-generate an explanation at every decision",
+    "explain_off_title": "Auto explanations are on — click to turn off",
+    "explain_turn": "Turn {{junme}}",
+    "explain_pending": "Generating explanation…",
+    "explain_unconfigured": "Auto explanations are on, but the cloud LLM is not configured or allowed yet — enable it in Settings → AI Tutorial"
   }
 }
