@@ -234,7 +234,10 @@ export function Overlay() {
                 </p>
               </div>
             ) : (
-              autoPending && (
+              // No spinner while unconfigured — the backend silently skips
+              // every turn then, and "generating…" would misread as slow.
+              autoPending &&
+              canOutbound && (
                 <p
                   className="text-[11px] text-muted-foreground"
                   data-testid="overlay-explain-pending"

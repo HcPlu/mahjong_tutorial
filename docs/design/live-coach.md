@@ -119,7 +119,7 @@ live 阶段对局还没有 history ULID（ULID 在对局结束落盘时才定）
 - **缓存优先**：`load_turn_doc` 命中也发事件（前端错过原事件可追补），与手动按钮
   共用 `pipeline::generate_live_turn`（provider → trust 解析 → 落盘），同巡只花一次钱；
 - 结果经 `TutorialLiveBus`（`event_bus.rs` 定义）广播 `TutorialLiveEvent`，ipc 转发为
-  前端事件 `tutorial-live-turn`；失败只 log、不重试——下一巡是天然重试。
+  前端事件 `tutorial-live-turn`；失败只 log、不重试——下一巡是天然重试。运行日志（info 可见）：成功记 `live turn N explained in X.Xs (model=…, cache=miss)`、缓存命中记 `served from cache`、outbound-not-allowed 每进程 warn 一次（缺 key/未同意不再静默）。
 
 **不做 streaming**：`TurnDoc` 是整块 JSON，解析需要完整响应，流式无法提前渲染。
 实测单巡时延（glm-5.3-flashx）：reasoning_effort=high 约 4-17 秒，low 约 3-8 秒；

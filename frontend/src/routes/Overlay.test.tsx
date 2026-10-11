@@ -176,4 +176,23 @@ describe('Overlay explain panel', () => {
     expect(invokeMock).toHaveBeenCalledWith('set_coach_auto', { enabled: true })
     await waitFor(() => expect(btn.getAttribute('aria-pressed')).toBe('true'))
   })
+
+  it('shows the unconfigured hint instead of a spinner when outbound is off', async () => {
+    // Auto on but no consent / endpoint: the backend silently skips every
+    // turn — a pending spinner here would misread as "generation is slow".
+    const unconfigured = {
+      ...TUTORIAL_AUTO_ON,
+      upload_consent: false,
+    }
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === 'get_config' ? Promise.resolve(config(true, unconfigured)) : Promise.resolve(),
+    )
+    render(<Overlay />)
+    await waitFor(() => expect(screen.getByTestId('overlay-explain-panel')).toBeTruthy())
+    capturedListener('bot-response')({ meta: {} })
+    await waitFor(() =>
+      expect(screen.getByText('overlay.explain_unconfigured')).toBeTruthy(),
+    )
+    expect(screen.queryByTestId('overlay-explain-pending')).toBeNull()
+  })
 })

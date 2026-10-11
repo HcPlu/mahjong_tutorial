@@ -197,7 +197,10 @@ auto_policy = "off"                   # off=仅手动深讲按钮；all=每次�
     `auto_explain_worker` 串行消费——每 job 实时重读 config（consent
     中途关闭立即停）、缓存命中也发 `TutorialLiveBus` 事件、生成走与
     手动按钮共用的 `pipeline::generate_live_turn`。ipc 转发为前端事件
-    `tutorial-live-turn`。headless 冒烟：`tutorial_debug --live-sim
+    `tutorial-live-turn`。**运行日志**（info 级即可见）：生成成功记
+    `live turn N explained in X.Xs (model=…, cache=miss)`、缓存命中记
+    `served from cache`；「outbound not allowed」跳过每进程 warn 一次
+    （缺 key/未同意时不再静默——曾伪装成"生成慢"）。headless 冒烟：`tutorial_debug --live-sim
     [--fake|--no-consent|--use-botref|--effort low|high|none|--limit N]`
     （sim 会话键稳定，二跑必全缓存；`--use-botref` 用离线重放的
     Mortal 真概率构建 prompt，`--dump` 把每巡上传原文/回显/时延

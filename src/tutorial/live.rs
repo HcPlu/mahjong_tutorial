@@ -246,7 +246,18 @@ pub async fn auto_explain_worker(
             continue;
         }
         if !crate::tutorial::upload::outbound_allowed(&cfg) {
-            debug!("live auto skipped (outbound not allowed)");
+            // debug was invisible at the default `info` level, which made a
+            // missing key / missing consent look like generation hanging
+            // ("why is it so slow?"). Warn, but once per process — this
+            // fires on every draw while unconfigured.
+            static WARNED: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            if !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                warn!(
+                    "live auto skipped: outbound not allowed — set the tutorial \
+                     LLM key / upload consent in Settings (further skips are silent)"
+                );
+            }
             continue;
         }
         let key = format!("{}-t{}", job.session_key, job.material.junme);
@@ -254,6 +265,7 @@ pub async fn auto_explain_worker(
         // button uses, so an auto-generated turn is free to click.
         match ctx.store.load_turn_doc(&key) {
             Ok(Some(cached)) => {
+                tracing::info!("live turn {} served from cache ({key})", job.material.junme);
                 emit_live_turn(&bus, &job.session_key, &cached);
                 continue;
             }

@@ -158,6 +158,10 @@ pub async fn generate_live_turn(
     material: &TurnMaterial,
     key: &str,
 ) -> Result<LiveTurnDoc> {
+    // Both callers arrive on a cache miss, so this is the true generation
+    // latency — the number to look for in all.log when tuning
+    // model / reasoning_effort.
+    let started = std::time::Instant::now();
     let resp = provider
         .complete(ChatRequest {
             messages: upload::build_turn_messages(material),
@@ -180,6 +184,12 @@ pub async fn generate_live_turn(
         created_at: chrono::Utc::now().to_rfc3339(),
     };
     store.save_turn_doc(&live_doc)?;
+    tracing::info!(
+        "live turn {} explained in {:.1}s (model={}, cache=miss)",
+        material.junme,
+        started.elapsed().as_secs_f32(),
+        live_doc.model.as_deref().unwrap_or("?"),
+    );
     Ok(live_doc)
 }
 
