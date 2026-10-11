@@ -219,6 +219,7 @@
     "deal_in_rate": "铳率",
     "avg_score": "期望打点",
     "actual_pick": "实际所打",
+    "engine_rank": "引擎 #{{rank}}",
     "engine_best": "引擎最优",
     "recommended": "推荐",
     "candidates": "切牌候选",

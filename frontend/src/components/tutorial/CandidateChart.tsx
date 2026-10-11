@@ -1,7 +1,9 @@
 // Discard-candidate comparison for the replay page: the engine's top
 // maintain candidates with the ranking score, win-rate / deal-in-risk
 // bars, plus badges for the student's actual pick and the engine's
-// attack-best. Every number is taken verbatim from the local
+// attack-best. A bot's played tile outside the engine's top rows swaps
+// in for the last row, tagged with its true engine rank. Every number is
+// taken verbatim from the local
 // AnalysisResult — no math beyond the engine's percent → 0..1 display
 // conversion. Dimensions with no signal in the current set (e.g. win
 // rate at 3-shanten, risk with nobody tenpai) collapse to "—" instead
@@ -29,14 +31,38 @@ type Props = {
 const MAX_ROWS = 5
 
 export function CandidateChart({ analysis, actual, botTurn, liveTurn }: Props) {
-  const maintain = analysis.hand14?.maintain?.slice(0, MAX_ROWS) ?? []
-  if (maintain.length === 0) return null
+  const full = analysis.hand14?.maintain ?? []
+  if (full.length === 0) return null
+  // The engine's own ranking (1-based) of every maintain candidate — a
+  // swapped-in row must still tell the truth about where the engine put it.
+  const rankOf = new Map(full.map((c, i) => [c.discard, i + 1]))
+  // Rows are the engine's top candidates, except that a bot's played tile
+  // outside them swaps in for the last row (working upward for a second
+  // bot) — otherwise the chosen badge would have no row to live on.
+  const rows: { cand: DiscardCandidate; engineRank: number | null }[] = full
+    .slice(0, MAX_ROWS)
+    .map((cand) => ({ cand, engineRank: null }))
+  const missing: string[] = []
+  for (const turn of [botTurn, liveTurn]) {
+    const tile = turn?.picks.find((p) => p.chosen)?.tile ?? forcedDiscard(turn)
+    if (tile && !rows.some((r) => r.cand.discard === tile) && !missing.includes(tile)) {
+      missing.push(tile)
+    }
+  }
+  let swapAt = rows.length - 1
+  for (const tile of missing) {
+    // Only maintain discards have engine rows; a backwards pick stays hidden.
+    const cand = full.find((c) => c.discard === tile)
+    if (!cand) continue
+    if (rows.length < MAX_ROWS) rows.push({ cand, engineRank: rankOf.get(tile) ?? null })
+    else if (swapAt >= 0) rows[swapAt--] = { cand, engineRank: rankOf.get(tile) ?? null }
+  }
   const best = analysis.best_attack_discard
-  const risks = maintain.map((c) => riskFor(analysis, c.discard))
+  const risks = rows.map((r) => riskFor(analysis, r.cand.discard))
   // A metric only renders when the current turn gives it signal — all
   // zeroes mean the engine has nothing to say there (far hand / no
   // tenpai threat), and a wall of "0%" reads as broken.
-  const winLive = maintain.some((c) => c.result.avg_agari_rate > 0)
+  const winLive = rows.some((r) => r.cand.result.avg_agari_rate > 0)
   const riskLive = risks.some((r) => (r ?? 0) > 0)
   const picks = botTurn?.picks ?? null
   const livePicks = liveTurn?.picks ?? null
@@ -54,26 +80,27 @@ export function CandidateChart({ analysis, actual, botTurn, liveTurn }: Props) {
         <SourceBadge source={botTurn?.source ?? null} />
         <SourceBadge source={liveTurn?.source ?? null} live />
       </div>
-      {maintain.map((c, i) => {
-        const botPick = picks?.find((p) => p.tile === c.discard) ?? null
-        const livePick = livePicks?.find((p) => p.tile === c.discard) ?? null
+      {rows.map(({ cand, engineRank }, i) => {
+        const botPick = picks?.find((p) => p.tile === cand.discard) ?? null
+        const livePick = livePicks?.find((p) => p.tile === cand.discard) ?? null
         return (
           <CandidateRow
-            key={c.discard}
-            cand={c}
+            key={cand.discard}
+            cand={cand}
+            engineRank={engineRank}
             risk={risks[i]}
             winLive={winLive}
             riskLive={riskLive}
-            isActual={actual !== null && c.discard === actual}
-            isBest={best !== null && c.discard === best}
+            isActual={actual !== null && cand.discard === actual}
+            isBest={best !== null && cand.discard === best}
             botProb={botPick?.prob ?? null}
-            isBotTop={picks != null && picks.length > 0 && picks[0].tile === c.discard}
-            isBotChosen={botPick?.chosen === true || forcedTile === c.discard}
+            isBotTop={picks != null && picks.length > 0 && picks[0].tile === cand.discard}
+            isBotChosen={botPick?.chosen === true || forcedTile === cand.discard}
             liveProb={livePick?.prob ?? null}
             isLiveTop={
-              livePicks != null && livePicks.length > 0 && livePicks[0].tile === c.discard
+              livePicks != null && livePicks.length > 0 && livePicks[0].tile === cand.discard
             }
-            isLiveChosen={livePick?.chosen === true || liveForcedTile === c.discard}
+            isLiveChosen={livePick?.chosen === true || liveForcedTile === cand.discard}
             dual={dual}
           />
         )
@@ -113,6 +140,7 @@ function SourceBadge({ source, live }: { source: BotRefSource | null; live?: boo
 
 function CandidateRow({
   cand,
+  engineRank,
   risk,
   winLive,
   riskLive,
@@ -127,6 +155,9 @@ function CandidateRow({
   dual,
 }: {
   cand: DiscardCandidate
+  /** Engine rank of a swapped-in row (null = the row is engine top-N as
+   *  displayed); tells the reader the row sits below the shown cutoff. */
+  engineRank: number | null
   /** Deal-in risk for the discarded tile, 0..1 (mixed risk / 100). */
   risk: number | null
   winLive: boolean
@@ -227,6 +258,11 @@ function CandidateRow({
         {isBest && (
           <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
             {t('tutorial.engine_best')}
+          </span>
+        )}
+        {engineRank != null && (
+          <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {t('tutorial.engine_rank', { rank: engineRank })}
           </span>
         )}
         {isLiveChosen ? (

@@ -219,6 +219,7 @@
     "deal_in_rate": "Deal-in",
     "avg_score": "Exp.",
     "actual_pick": "You played",
+    "engine_rank": "Engine #{{rank}}",
     "engine_best": "Engine best",
     "recommended": "Recommended",
     "candidates": "Discard candidates",

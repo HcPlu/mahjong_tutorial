@@ -219,6 +219,7 @@
     "deal_in_rate": "放銃",
     "avg_score": "期待点",
     "actual_pick": "実際の打牌",
+    "engine_rank": "エンジン #{{rank}}",
     "engine_best": "エンジン最善",
     "recommended": "推奨",
     "candidates": "打牌候補",

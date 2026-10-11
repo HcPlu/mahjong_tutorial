@@ -219,6 +219,7 @@
     "deal_in_rate": "放銃率",
     "avg_score": "期望打點",
     "actual_pick": "實際所打",
+    "engine_rank": "引擎 #{{rank}}",
     "engine_best": "引擎最佳",
     "recommended": "推薦",
     "candidates": "切牌候選",

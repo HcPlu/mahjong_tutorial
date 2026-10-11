@@ -209,4 +209,67 @@ describe('CandidateChart', () => {
       expect(screen.queryByText(/live_bot/)).toBeNull()
     })
   })
+
+  it('swaps a below-cutoff bot pick into the last row, tagged with its engine rank', () => {
+    // Real shape from game 01M4N9NH junme 19: the engine ranks
+    // 9m/5m/1p/E/S… but both the bot and the student played 6p (rank 6).
+    const a = analysis([
+      cand('9m', { waits_total: 36, mixed_waits_score: 78.365 }),
+      cand('5m', { waits_total: 35, mixed_waits_score: 77.944 }),
+      cand('1p', { waits_total: 35, mixed_waits_score: 77.944 }),
+      cand('E', { waits_total: 35, mixed_waits_score: 77.944 }),
+      cand('S', { waits_total: 35, mixed_waits_score: 77.944 }),
+      cand('6p', { waits_total: 33, mixed_waits_score: 75.461 }),
+    ])
+    const { container } = render(
+      <CandidateChart
+        analysis={a}
+        actual="6p"
+        botTurn={{
+          junme: 19,
+          action: 'dahai:6p',
+          source: 'model',
+          picks: [
+            { tile: '6p', label: 'Discard', prob: 0.2786, chosen: true },
+            { tile: 'E', label: 'Discard', prob: 0.2314 },
+            { tile: '1p', label: 'Discard', prob: 0.1993 },
+          ],
+        }}
+      />,
+    )
+    // Still five rows — the bot's tile replaced the 5th, not extended.
+    expect(container.querySelectorAll('.flex.items-center.gap-3').length).toBe(5)
+    const seqs = Array.from(container.querySelectorAll('mah-gen[data-seq]')).map((el) =>
+      el.getAttribute('data-seq'),
+    )
+    expect(seqs).toEqual(['9m', '5m', '1p', '1z', '6p']) // E renders as 1z; S gave way to 6p
+    // The swapped row now hosts both badges and its true engine rank.
+    expect(screen.getAllByText('tutorial.bot_chosen').length).toBe(1)
+    expect(screen.getByText('tutorial.actual_pick')).toBeTruthy()
+    expect(screen.getByText('tutorial.engine_rank')).toBeTruthy()
+  })
+
+  it('leaves the top rows untouched and untagged when the bot pick is inside them', () => {
+    const a = analysis([
+      cand('P', { waits_total: 53, mixed_waits_score: 88.8 }),
+      cand('C', { waits_total: 53, mixed_waits_score: 88.8 }),
+    ])
+    const { container } = render(
+      <CandidateChart
+        analysis={a}
+        actual={null}
+        botTurn={{
+          junme: 1,
+          action: 'dahai:C',
+          source: 'model',
+          picks: [
+            { tile: 'C', label: 'Discard', prob: 0.55, chosen: true },
+            { tile: 'P', label: 'Discard', prob: 0.3 },
+          ],
+        }}
+      />,
+    )
+    expect(container.querySelectorAll('.flex.items-center.gap-3').length).toBe(2)
+    expect(screen.queryByText('tutorial.engine_rank')).toBeNull()
+  })
 })
