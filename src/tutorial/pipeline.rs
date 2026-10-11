@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Result};
 use crate::config::TutorialConfig;
 use crate::schema::MjaiEvent;
 use crate::tutorial::assemble::build_review_material;
-use crate::tutorial::download::parse_review_doc;
+use crate::tutorial::download::parse_review_doc_trust;
 use crate::tutorial::material::{ReviewCoverage, ReviewDoc, ReviewMaterial};
 use crate::tutorial::provider::{ChatRequest, OpenAiCompatProvider, TutorialProvider};
 use crate::tutorial::store::TutorialStore;
@@ -95,8 +95,11 @@ pub async fn generate_review(
             })
             .await
             .context("LLM request failed — degrading to a numbers-only review")?;
-        let doc = parse_review_doc(&resp.content, &sub)
-            .context("LLM reply rejected by validation — degrading to a numbers-only review")?;
+        // Trust passthrough (D-0013, current stage): keep the reply
+        // verbatim — no cross-checking, no turn dropping. The strict
+        // validators stay parked in download.rs for when the stage ends.
+        let doc = parse_review_doc_trust(&resp.content, &sub)
+            .context("LLM reply was not keepable JSON — degrading to a numbers-only review")?;
         if overview.is_none() {
             overview = doc.overview.clone();
         }

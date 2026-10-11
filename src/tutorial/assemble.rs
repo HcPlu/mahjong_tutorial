@@ -443,17 +443,19 @@ pub(crate) fn turn_context(
     }
 }
 
-/// Map one discard candidate onto the checked-number contract. Shared by
-/// the review assembler and the live coach so both narrate identical
-/// numbers for identical positions (D-0005: these are the only numbers
-/// that may reach the player).
+/// Probabilities are quantized **at the source** to lengths models echo
+/// reliably (win rate 2 decimals, deal-in 3): a real reply rounded
+/// `0.017039` to `0.017` and failed exact-equality validation, and
+/// 1e-2/1e-3 resolution is far beyond teaching needs. Quantizing keeps
+/// the download zone's check strict — both sides carry the same rounded
+/// value.
 pub(crate) fn engine_numbers(cand: &DiscardCandidate, result: &AnalysisResult) -> EngineNumbers {
     let r = &cand.result;
     // mixed_risk / avg_agari_rate are percent (0..100) in the engine;
     // EngineNumbers is 0.0..=1.0.
     let deal_in_rate = Tile34::from_mjai(&cand.discard)
         .and_then(|t| result.mixed_risk.get(t.idx() as usize).copied())
-        .map(|pct| pct / 100.0);
+        .map(|pct| quantize(pct / 100.0, 3));
     let avg_score = if r.riichi_point > 0.0 {
         Some(r.riichi_point.round() as i64)
     } else if r.dama_point > 0.0 {
@@ -463,10 +465,17 @@ pub(crate) fn engine_numbers(cand: &DiscardCandidate, result: &AnalysisResult) -
     };
     EngineNumbers {
         shanten: i32::from(r.shanten),
-        win_rate: Some(r.avg_agari_rate / 100.0),
+        win_rate: Some(quantize(r.avg_agari_rate / 100.0, 2)),
         deal_in_rate,
         avg_score,
     }
+}
+
+/// Round to `places` decimal places — see [`engine_numbers`] for why the
+/// checked numbers are quantized at the source.
+pub(crate) fn quantize(v: f64, places: u32) -> f64 {
+    let scale = 10f64.powi(places as i32);
+    (v * scale).round() / scale
 }
 
 /// The inputs of [`is_key_turn`] — kept as a plain struct so the rule

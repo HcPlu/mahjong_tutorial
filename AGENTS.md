@@ -109,8 +109,8 @@ bash scripts/package-zip.sh <target-triple>
 
 1. **三区单向流不可绕过**（D-0007）：出网必经 `upload.rs`（consent 门控 + 脱敏），入网必经 `download.rs`（校验 + 反幻觉核对），落盘必经 `store.rs`。禁止在 provider / pipeline 里直连 reqwest 或直接写文件。
 2. **consent 先于调用，缓存先于请求**：`upload_consent` 未开或 key 未配置时不得发起任何网络请求；调 LLM 前先查 `TutorialStore` 缓存（同一局复盘只花一次钱）。
-3. **讲解中的数字只能来自 `analysis` 引擎**（D-0005）：LLM 输出里的向听/铳率/和率必须与讲解原料逐项核对，对不上就丢弃该段讲解，绝不"就地采信"。
-4. **低耦合边界**：`src/tutorial/` 不得 `use crate::ipc`、不得依赖 `src/bot` 的内部函数（脱敏在 `upload.rs` 自持一份）；对 `history`/`analysis` 只读。
+3. **讲解数字的来源与校验分阶段**：D-0005 的长期原则是数字只能来自 `analysis` 引擎；**现阶段（D-0013，仓库主人 2026-10-11 决定）走信任直通**——LLM 输出原样保留，不逐项核对、不丢弃巡。严格校验器（`parse_review_doc*`/`parse_turn_doc`）保留在 `download.rs` 并持续测试，阶段结束切回即可。
+4. **低耦合边界**：`src/tutorial/` 不得 `use crate::ipc`（方向只能是 ipc → tutorial）；脱敏逻辑在 `upload.rs` 自持一份；对 `history`/`analysis` 只读。**可以**依赖 `crate::bot` 的公开接口（`BotResponse`、`BotRunner`、`bot::replay` 等，仓库主人 2026-10-11 放开；bot 参照/候选概率类功能优先走 `bot` 的公开 API 而非复制其内部逻辑）。
 5. **key 永不进日志、不进错误信息、不进仓库**；新增用户可见字符串走 i18n 四语言。
 
 ## 7. 陷阱清单（前辈用血换的）

@@ -44,9 +44,10 @@ ReviewMaterial（讲解原料：analysis 引擎的数字 + 牌面快照）
    upload_consent + llm 配置齐全）为 false 时，不得发起任何网络请求。
 3. **缓存先于请求**：调 LLM 前必须先 `TutorialStore::load_review` 命中检查
    ——同一局复盘只花一次钱。
-4. **数字的可信来源只有一个**：`EngineNumbers` 只能由 `analysis` 引擎填充；
-   `download::parse_review_doc` 对 LLM 回显的数字做**逐项相等**校验，
-   不相等整巡拒绝（降级为纯数字复盘），绝不"就地采信"。
+4. **数字的可信来源只有一个；校验分阶段**：`EngineNumbers` 只能由 `analysis`
+   引擎填充。回显校验现阶段走**信任直通**（D-0013：`parse_review_doc_trust`，
+   原样保留不核对）；严格逐项相等校验器（`parse_review_doc(_lenient)`）
+   保留待命，阶段结束切回。
 5. **浮点回显用 round-trip 格式**：`upload` 渲染数字用 `{:?}`
    （round-trip 精确），这是 download 端能用 `==` 严格比对的前提。
    改渲染格式前先想清楚这一点。
@@ -93,11 +94,19 @@ prompt 文本**——两处没有编译期联动，靠这条 README 约束。
 
 ## 调试工具（`tutorial-debug`）
 
-`cargo run --bin tutorial_debug -- --game latest [--coverage key|all] [--refresh] [--json]`
+`cargo run --bin tutorial_debug -- --game latest [--coverage key|all] [--refresh] [--json] [--inspect <junme>] [--botref]`
 —— headless 驱动与 UI 完全相同的管线（同一份 config.toml、同一个 history/tutorial
 存储目录），用于无 GUI 验证与排查。生成的讲解写入共享缓存，UI 打开同一局直接显示。
-实测参数基线（2026-10，智谱）：`glm-5.3-flashx`、6 巡/批、max_tokens 16000 →
-12 巡关键档约 110 秒、缓存命中微秒级。
+实测参数基线（2026-10，智谱）：`glm-5.3-flashx` + `reasoning_effort = "low"`、
+6 巡/批、max_tokens 16000 → 12 巡关键档约 20 秒、缓存命中微秒级。
+
+### Bot 参照（`botrefs/<ulid>.json`）
+
+`tutorial_bot_reference` IPC（编排层 `src/ipc/tutorial_botref.rs`，重放引擎
+`src/bot/replay.rs`）：把整局录下的事件流按决策点批量喂给配置的子进程 bot
+（mortal），捕获每巡的 `meta.show` 候选概率，落盘为 `BotRefDoc`。纯本地
+推理、无 LLM、无 consent 门；一次生成永久缓存。前端候选图表据此渲染
+「Bot xx%」置信列与「Bot 首选」徽标。已验证：51 决策点全程数秒完成。
 
 ## 配置示例
 

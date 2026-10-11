@@ -1,12 +1,18 @@
 //! Download zone — the **only** path cloud data takes into this app
 //! (D-0007).
 //!
-//! [`parse_review_doc`] takes the raw assistant message and the material
-//! it was generated from, and returns a [`ReviewDoc`] only if the reply
-//! is structurally valid **and** every number it echoes matches the
-//! engine numbers of the material exactly (the D-0005 anti-hallucination
-//! guard). Any mismatch is an error the caller degrades on — a missing
-//! explanation is better than a wrong one.
+//! Two regimes live here:
+//!
+//! - **Trust-passthrough (current stage, D-0013)**:
+//!   [`parse_review_doc_trust`] / [`parse_turn_doc_trust`] keep the LLM's
+//!   output verbatim — JSON extraction and identity stamping only, no
+//!   turn dropping, no number cross-checking. The owner scoped the
+//!   strict guard out for this stage of development.
+//! - **Strict anti-hallucination (D-0005, parked for later)**:
+//!   [`parse_review_doc`] / [`parse_review_doc_lenient`] /
+//!   [`parse_turn_doc`] cross-check every echoed number against the
+//!   material and reject what doesn't match. Kept compiled and tested —
+//!   flip the pipeline back when the stage ends.
 
 use anyhow::{bail, Context, Result};
 
@@ -93,6 +99,119 @@ pub fn parse_review_doc(content: &str, material: &ReviewMaterial) -> Result<Revi
             bail!("overview missing or empty — the reply must open with a game-level summary");
         }
     }
+    Ok(doc)
+}
+
+/// Salvage-mode variant used by the pipeline: instead of one bad turn
+/// voiding the whole reply, each turn is validated independently and
+/// only the offending turns are dropped (with the reason collected for
+/// the caller to surface). Every surviving turn passed the exact same
+/// checks as [`parse_review_doc`] — D-0005 is not relaxed, one sloppy
+/// echo just no longer costs the other eleven turns. Turns are matched
+/// to material by junme, so a merged/missing turn cannot shift
+/// alignment. Fails only when *nothing* survives or there is no overview.
+pub fn parse_review_doc_lenient(
+    content: &str,
+    material: &ReviewMaterial,
+) -> Result<(ReviewDoc, Vec<String>)> {
+    let json_span = extract_json_span(content).context("no JSON object found in LLM reply")?;
+    let raw: ReviewDoc = serde_json::from_str(json_span)
+        .with_context(|| "LLM reply is not valid JSON for a review document")?;
+
+    let mut turns = Vec::new();
+    let mut rejected = Vec::new();
+    for turn_doc in raw.turns {
+        let Some(turn_mat) = material.turns.iter().find(|t| t.junme == turn_doc.junme) else {
+            rejected.push(format!(
+                "junme {}: not part of this material (reply {:?})",
+                turn_doc.junme, turn_doc.recommended
+            ));
+            continue;
+        };
+        let at = format!("junme {}", turn_mat.junme);
+        let ok = turn_mat
+            .candidates
+            .iter()
+            .find(|c| c.label == turn_doc.recommended)
+            .is_some_and(|c| turn_doc.numbers == c.numbers)
+            && !turn_doc.explanation_zh.trim().is_empty();
+        if ok {
+            turns.push(turn_doc);
+        } else {
+            let cand = turn_mat
+                .candidates
+                .iter()
+                .find(|c| c.label == turn_doc.recommended);
+            let reason = match cand {
+                None => format!(
+                    "{at}: recommended {:?} is not an offered candidate",
+                    turn_doc.recommended
+                ),
+                Some(c) if turn_doc.numbers != c.numbers => format!(
+                    "{at}: engine numbers were altered (reply {:?} vs material {:?})",
+                    turn_doc.numbers, c.numbers
+                ),
+                _ => format!("{at}: empty explanation"),
+            };
+            rejected.push(reason);
+        }
+    }
+    if turns.is_empty() {
+        bail!(
+            "no turn survived validation ({} rejected) — degrading to a numbers-only review",
+            rejected.len()
+        );
+    }
+    let doc = ReviewDoc {
+        game_id: material.game_id.clone(),
+        seat: material.seat,
+        model: raw.model,
+        created_at: raw.created_at,
+        overview: raw.overview,
+        turns,
+    };
+    if !doc
+        .overview
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty())
+    {
+        bail!("overview missing or empty — the reply must open with a game-level summary");
+    }
+    Ok((doc, rejected))
+}
+
+/// Trust-passthrough review parse (current stage, D-0013): keep the
+/// LLM's reply verbatim — no turn dropping, no number cross-checking.
+/// Only the irreducible minimum happens: JSON extraction, identity
+/// stamping from the material (game_id/seat are ours to assert, the
+/// model has no say), and a non-empty turn list. Numbers rendered by
+/// the frontend still come from this doc as received.
+pub fn parse_review_doc_trust(content: &str, material: &ReviewMaterial) -> Result<ReviewDoc> {
+    let json_span = extract_json_span(content).context("no JSON object found in LLM reply")?;
+    let mut doc: ReviewDoc = serde_json::from_str(json_span)
+        .with_context(|| "LLM reply is not valid JSON for a review document")?;
+    if doc.turns.is_empty() {
+        bail!("reply carried no turns — nothing to keep");
+    }
+    doc.game_id = material.game_id.clone();
+    doc.seat = material.seat;
+    Ok(doc)
+}
+
+/// Trust-passthrough single-turn parse (current stage, D-0013) — the
+/// live deep-dive twin of [`parse_review_doc_trust`].
+pub fn parse_turn_doc_trust(
+    content: &str,
+    material: &crate::tutorial::material::TurnMaterial,
+) -> Result<crate::tutorial::material::TurnDoc> {
+    let json_span = extract_json_span(content).context("no JSON object found in LLM reply")?;
+    let mut doc: crate::tutorial::material::TurnDoc = serde_json::from_str(json_span)
+        .with_context(|| "LLM reply is not valid JSON for a turn document")?;
+    if doc.explanation_zh.trim().is_empty() && doc.headline.is_none() {
+        bail!("reply carried neither explanation nor headline — nothing to keep");
+    }
+    // junme is ours to assert; the model may echo it loosely.
+    doc.junme = material.junme;
     Ok(doc)
 }
 
@@ -317,6 +436,42 @@ mod tests {
         format!(
             r#"{{"junme":5,"recommended":"dahai:5s","numbers":{numbers},"explanation_zh":"切5s保进张，两面听牌机会更大。","headline":"保进张"}}"#
         )
+    }
+
+    #[test]
+    fn trust_parse_keeps_everything_verbatim() {
+        // Numbers that would fail strict cross-checking (altered digits,
+        // invented candidate) survive untouched under D-0013.
+        let raw = concat!(
+            "前置废话
+{\"overview\":\"总评\",\"game_id\":\"whatever\",\"seat\":9,",
+            "\"turns\":[{\"junme\":6,\"recommended\":\"dahai:9z\",",
+            "\"numbers\":{\"shanten\":0,\"win_rate\":0.99,\"deal_in_rate\":null,\"avg_score\":null},",
+            "\"explanation_zh\":\"讲解\",\"headline\":null}]}
+后置废话"
+        );
+        let doc = parse_review_doc_trust(raw, &material()).unwrap();
+        assert_eq!(
+            doc.game_id, "01JTESTGAME",
+            "identity is stamped from the material"
+        );
+        assert_eq!(doc.seat, 2);
+        assert_eq!(doc.turns.len(), 1);
+        assert_eq!(doc.turns[0].recommended, "dahai:9z");
+        assert_eq!(doc.turns[0].numbers.win_rate, Some(0.99));
+
+        // Empty replies are still useless.
+        let empty = "{\"turns\":[],\"overview\":\"x\"}";
+        assert!(parse_review_doc_trust(empty, &material()).is_err());
+    }
+
+    #[test]
+    fn trust_turn_parse_stamps_our_junme() {
+        let raw = r#"{"junme": 999, "recommended": "dahai:5s", "numbers": {"shanten": 1},
+                      "explanation_zh": "讲解", "headline": "标题"}"#;
+        let doc = parse_turn_doc_trust(raw, &turn_material()).unwrap();
+        assert_eq!(doc.junme, 5, "junme is ours to assert");
+        assert_eq!(doc.recommended, "dahai:5s");
     }
 
     #[test]
