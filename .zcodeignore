@@ -1,0 +1,105 @@
+venv
+__pycache__
+target
+node_modules
+.assets
+
+# Release-signing secret key (public half is tracked as minisign.pub)
+secrets/
+
+# Local LLM API keys for the tutorial module (never commit; consumed via
+# TUTORIAL_LLM_API_KEY or pasted into Settings)
+secret/
+
+# Claude
+.claude
+CLAUDE.md
+claude*.md
+*mcp.json
+.agents
+.codex
+
+# NOTE: AGENTS.md is TRACKED in this fork (it is the governance file for AI
+# coding agents, see AGENTS.md). Upstream ignores it as private memory; do not
+# re-add it here.
+
+# Reference
+reference
+reference*.md
+
+# Runtime data
+ca/
+logs/
+
+# Per-bot uv venvs and stamp files (managed by Akagi)
+mjai_bot/*/.akagi/
+mjai_bot/*/uv.lock
+mjai_bot/*/.venv/
+
+# Per-bot user-edited settings (manifest.toml ships with the bot; settings.toml does not)
+mjai_bot/*/settings.toml
+
+# Tauri
+gen/
+
+# Packaging output (scripts/package-zip.sh)
+dist/
+
+# Bundled python + uv binaries fetched by scripts/fetch-runtime.sh.
+runtime/*
+!runtime/.gitkeep
+
+# mortal-298k local bot: track the wrapper code, ignore weights & machine-local files
+mjai_bot/mortal/mortal_298k.pth
+mjai_bot/mortal/engine.toml
+mjai_bot/mortal/game_log.jsonl
+
+# Locally-built bot release artifacts
+mortal.zip
+*.bot.zip
+tests/mortal_zip_layout.rs
+
+# Test
+test
+
+# Local release helper
+scripts/tag_release.sh
+
+# Training-data shards written by native_bot's extractor (see native_bot/train/README.md).
+# Tens of GB of intermediate binaries; the trained weights are what gets committed.
+native_bot/out/
+
+# Mimosa security-scan history (see ~/.mimosa fallback when absent)
+.mimosa
+
+# ZCode session artifacts
+.zcode/
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+site-packages/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）
