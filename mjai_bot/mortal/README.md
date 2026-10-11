@@ -9,6 +9,9 @@ masking and the agari guard all match upstream exactly.
 
 - 4-player **hanchan** only (the checkpoint is hanchan; `supported_modes =
   ["4p"]`).
+- Model architecture, action output and the rule-based guards, verified
+  against the wired engine checkout, are documented in
+  [docs/design/mortal-internals.md](../../docs/design/mortal-internals.md).
 - CPU inference; measured on an i7-13700K: ~15-25 ms per decision driving
   `mortal.py` directly, ~80 ms through bot.py (probe overhead), ~1.3 s for
   the first decision after model load. Akagi's budget is 5 s.
