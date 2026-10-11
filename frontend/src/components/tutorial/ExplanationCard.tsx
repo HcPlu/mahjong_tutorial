@@ -2,11 +2,20 @@
 // + the recommended-vs-actual tiles + the engine numbers the text is
 // allowed to quote (already cross-checked by the backend's download
 // zone — this component just renders).
+//
+// The coaching text toggles between two views: tile codes translated to
+// Chinese tile names (default — 一筒 instead of 1p) and the verbatim
+// LLM output. Translation is display-only post-processing; the stored
+// document never changes.
 
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Languages, FileText } from 'lucide-react'
 
 import { Mahgen } from '@/components/Mahgen'
+import { Button } from '@/components/ui/button'
 import { mjaiToMahgen } from '@/lib/tileIdx'
+import { tileNamesZh } from '@/components/tutorial/tileText'
 import type { TurnDoc } from '@/components/tutorial/types'
 
 type Props = {
@@ -22,15 +31,31 @@ function labelToTile(label: string): string | null {
 
 export function ExplanationCard({ doc, actual }: Props) {
   const { t } = useTranslation()
+  const [raw, setRaw] = useState(false)
   const recommended = labelToTile(doc.recommended)
+  const view = (s: string) => (raw ? s : tileNamesZh(s))
 
   return (
     <div className="space-y-2">
-      {doc.headline && (
-        <p className="text-sm font-semibold">{doc.headline}</p>
-      )}
+      <div className="flex items-start justify-between gap-2">
+        {doc.headline ? (
+          <p className="text-sm font-semibold">{view(doc.headline)}</p>
+        ) : (
+          <span />
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 shrink-0 px-2 text-xs text-muted-foreground"
+          onClick={() => setRaw((v) => !v)}
+          title={raw ? t('tutorial.show_translated') : t('tutorial.show_raw')}
+        >
+          {raw ? <Languages className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+          {raw ? t('tutorial.show_translated') : t('tutorial.show_raw')}
+        </Button>
+      </div>
       <p className="text-sm leading-relaxed text-foreground/90">
-        {doc.explanation_zh}
+        {view(doc.explanation_zh)}
       </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-border px-2 py-1.5">
         {recommended && (

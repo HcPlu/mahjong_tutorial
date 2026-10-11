@@ -244,7 +244,9 @@
     "param_model": "モデル",
     "param_thinking": "思考",
     "param_custom": "カスタム…",
-    "thinking_default": "既定"
+    "thinking_default": "既定",
+    "show_raw": "原文",
+    "show_translated": "中国語牌名"
   },
   "coach": {
     "disabled": "コーチはオフです。設定 → AIチュートリアル で有効にしてください。",

@@ -244,7 +244,9 @@
     "param_model": "模型",
     "param_thinking": "思考",
     "param_custom": "自訂…",
-    "thinking_default": "預設"
+    "thinking_default": "預設",
+    "show_raw": "原文",
+    "show_translated": "中文牌名"
   },
   "coach": {
     "disabled": "教練未開啟——在設定 → AI 教學 中打開。",

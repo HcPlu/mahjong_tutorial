@@ -244,7 +244,9 @@
     "param_model": "Model",
     "param_thinking": "Thinking",
     "param_custom": "Custom…",
-    "thinking_default": "default"
+    "thinking_default": "default",
+    "show_raw": "Raw",
+    "show_translated": "中文牌名"
   },
   "coach": {
     "disabled": "Coach is off — enable it in Settings → AI Tutorial.",

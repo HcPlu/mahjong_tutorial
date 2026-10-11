@@ -14,6 +14,7 @@ import { TileFrame } from '@/components/TileFrame'
 import { Button } from '@/components/ui/button'
 import { mjaiToMahgen } from '@/lib/tileIdx'
 import { getTutorialConfig, outboundAllowed } from '@/components/tutorial/configGate'
+import { tileNamesZh } from '@/components/tutorial/tileText'
 import { useConfigStore } from '@/stores/configStore'
 import { useTutorialStore } from '@/stores/tutorialStore'
 import type { Breakpoint } from '@/tiles/defaults'
@@ -98,9 +99,9 @@ export function CommentaryTile({ bp }: { bp: Breakpoint }) {
             {deepDoc && (
               <div className="rounded-md border border-border px-2 py-1.5">
                 {deepDoc.headline && (
-                  <p className="text-sm font-semibold">{deepDoc.headline}</p>
+                  <p className="text-sm font-semibold">{tileNamesZh(deepDoc.headline)}</p>
                 )}
-                <p className="text-sm leading-relaxed">{deepDoc.explanation_zh}</p>
+                <p className="text-sm leading-relaxed">{tileNamesZh(deepDoc.explanation_zh)}</p>
               </div>
             )}
           </div>
