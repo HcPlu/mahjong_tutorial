@@ -77,7 +77,14 @@ prompt 文本**——两处没有编译期联动，靠这条 README 约束。
   录制时若未标视角（id 为 None），装配器克隆该事件注入 `id = seat` 再喂，
   否则快照手牌全是 `"?"`。
 - **junme 口径**：我方第 N 次摸牌（含杠后岭上），与 live 深讲同口径；
-  不用快照 `turn_count`。
+  不用快照 `turn_count`。junme 只在 `StartGame` 重置——**跨局连续**
+  （E2 的第一巡接着 E1 计数），因此 outline / review / botref 里的
+  junme 在一局游戏内全局唯一，前端可直接按 junme 查找。
+- **回放步进的窗口语义**（`enclosing_analysis`）：`tutorial_replay_step`
+  在事件恰好是我方摸牌时直接分析；滑块拖到巡内其他事件（对手摸切、
+  我方已切之后）时，返回**包围该位置的上一个决策**的分析——候选图表
+  与讲解卡片在下一个摸牌到来前保持可见，而不是显示「此位置没有切牌
+  决策」。决策索引取自 outline 缓存；首个决策之前仍为 `None`。
 - **候选集**：`hand14.maintain` 前 3 ∪ 实际切牌 ∪ `best_defence_discard`
   （后两者仅当存在于 maintain——否则没有可引用的引擎数字），cap 5。
   `maintain` 为空的巡（如恰好完整的 14 张形）整巡跳过。
@@ -132,6 +139,10 @@ model    = "glm-5.3-flashx"
 request_timeout_ms = 300000          # 离线批量，clamp 到 [5s, 300s]
 # reasoning_effort = "low"           # 可选：思考型模型(GLM-5.3-flash等)的思考开关；
                                      #   不设=不发送。教程场景数字已本地算好，low 足够且快一个量级
+
+[tutorial.coach]                      # 对局中教练（M2 / D-0016 自动模式）
+enabled = false                       # 主开关：关=模板层静默、自动层零出网
+auto_policy = "off"                   # off=仅手动深讲按钮；all=每次摸牌后台抢先生成
 ```
 
 ## 扩展方法
@@ -158,6 +169,13 @@ request_timeout_ms = 300000          # 离线批量，clamp 到 [5s, 300s]
     `LiveTurnDoc` 包装；键 = `session_key + "-t" + junme`，
     `session_key` = 本地时间戳+座位，字符集过 `validate_game_id`）。
   - IPC `tutorial_explain_live`：缓存→consent→三区，失败降级 toast。
+  - **自动模式（D-0016，「摸牌时抢先」）**：`coach.enabled &&
+    auto_policy = "all"` 时 `drive_loop` 把当巡素材投进 `mpsc(4)`，
+    `auto_explain_worker` 串行消费——每 job 实时重读 config（consent
+    中途关闭立即停）、缓存命中也发 `TutorialLiveBus` 事件、生成走与
+    手动按钮共用的 `pipeline::generate_live_turn`。ipc 转发为前端事件
+    `tutorial-live-turn`。headless 冒烟：`tutorial_debug --live-sim
+    [--fake|--no-consent|--limit N]`（sim 会话键稳定，二跑必全缓存）。
 - **自适应练习系统（M3，D-0009）**：设计见
   [docs/design/drills.md](../../docs/design/drills.md)。后端落点
   `src/tutorial/drills/`（题目 schema、生成管线、学习者模型、判题），判题

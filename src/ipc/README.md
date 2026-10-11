@@ -89,6 +89,11 @@ a thin wrapper over `src/tutorial/` — the consent gate, review cache and
 anti-hallucination number checks live there (see that module's README);
 IPC only shuttles data and never re-implements those rules.
 
+One tutorial event flows the other way: the `TutorialLiveBus` (fed by
+`tutorial::live::auto_explain_worker`, D-0016) is forwarded to the
+frontend as `tutorial-live-turn` so the coach tile can render each
+auto-generated live deep-dive the moment it lands.
+
 ## Windows
 
 `overlay.rs` owns the app's second window: a frameless, transparent,

@@ -5,6 +5,19 @@
 
 ---
 
+## D-0016 · 对局中自动讲解：摸牌时抢先生成 + 串行 worker + TutorialLiveBus 推送
+
+- **背景**：M2 深讲层现状是纯手动（点「详细讲解」才调 LLM，等待 3-8 秒）。仓库主人 2026-10-11 要求对局中自动 AI 分析，并在三个触发方案中明确选择**「摸牌时抢先」**——摸牌瞬间（bot 响应到达、切牌窗口打开）即后台生成，讲解赶在切牌决策前出现。这收窄了 live-coach.md §8「不自动逐巡调 LLM（D-0008）」与「不新增 event_bus 通道」两条旧非目标。
+- **决定**：
+  1. **触发点 = `drive_loop` 收到 `BotResponse`**（此刻正是决策窗口打开）：`coach.enabled && coach.auto_policy == "all"` 时把当巡 `TurnMaterial` 投进 `mpsc(4)` 队列（满则丢新——只有 reconnect 突发会满，恰好该丢的是过期 restore 巡）。`actual` 语义不变（bot 首选；玩家此刻还没切）。
+  2. **串行 worker**（`auto_explain_worker`）：单消费者、同一时刻最多一个在途 LLM 请求；**每个 job 实时重读 config**（consent/开关中途关闭立即生效）；缓存优先（命中也发事件，前端错过事件可追补）；生成走与手动按钮共用的 `pipeline::generate_live_turn`（provider→trust 解析→落盘），同巡只花一次钱。失败只 log 不重试。
+  3. **新总线 `TutorialLiveBus`**（定义仍在 `event_bus.rs` 唯一合法处）承载 `TutorialLiveEvent{session_key, junme, doc, model}`，ipc 转发为前端事件 `tutorial-live-turn`；前端磁贴先显示「生成中」，事件到达自动渲染，静音时完全抑制。**不做 streaming**：TurnDoc 是整块 JSON，流式无法提前渲染。
+  4. **`auto_policy: off(默认)|all`** 进 `CoachConfig`；`coach.enabled` 是主开关（磁贴关了就不许偷偷花钱）。缓存键仍 `{session_key}-t{junme}`，与手动按钮共享。
+- **理由**：抢先模式下时延即价值（实测 glm-5.3-flashx + reasoning_effort=high 单巡 4-17 秒，配 low 可到 3-8 秒，切牌窗口 10-20 秒）；串行避免并行限流；实时读配置保证隐私开关的即时性；缓存共享让自动生成的巡点手动按钮零成本。
+- **代价**：全部巡触发则每局 60-80 次调用（flashx 约 ¥0.2-0.3/局，免费模型可零成本）；`reasoning_effort=high` 时讲解经常晚于切牌（建议配 low）；为抢时延讲解里没有玩家实际切牌的对比（弃牌后对比式讲解可作后续增强）。
+
+
+
 ## D-0015 · Progress 日志模块：docs/progress/ 按日记录 prompt 与产出
 
 - **背景**：本仓库为 AI 驱动开发（vibe），过程资产（主人给过的 prompt、每次改动的缘由）此前只散落在 git 提交信息与被 ignore 的 `.zcode/plans/` 里，会话结束即丢失；ROADMAP 管里程碑、DECISIONS 管架构决策，日常「做了什么、为什么做」无人承载。仓库主人 2026-10-11 明示需要 progress 监控。

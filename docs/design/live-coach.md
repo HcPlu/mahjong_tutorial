@@ -104,6 +104,23 @@ tutorial_explain_live()
 
 live 阶段对局还没有 history ULID（ULID 在对局结束落盘时才定）。v1 缓存键 = `session_key + "-t" + junme`，其中 `session_key` 为对局开始时的本地时间戳（`YYYYMMDD-HHMMSS`）+ 座位。落盘在 `<root>/live/` 下，id 过 `store.rs::validate_game_id`。M1 流水线落地时若能让 history 提前分配对局 id，则切换为 ULID 键；旧缓存直接作废（量小，无迁移价值）。`TutorialStore` 增 `save_turn_doc` / `load_turn_doc` 两个方法，写路径仍走单 mutex。
 
+### 4.4 自动模式（D-0016，摸牌时抢先生成）
+
+`[tutorial.coach] auto_policy = "all"` 时，`drive_loop` 在建好当巡素材后立刻把它投进
+`mpsc(4)` 队列（满则丢新——只有 reconnect 突发会满，该丢的恰好是过期 restore 巡）。
+独立的 `auto_explain_worker` 串行消费：
+
+- **每个 job 实时重读 config**：`coach.enabled` / `auto_policy` / `outbound_allowed()`
+  任何一项中途关闭，下一个 job 立即跳过（正在途的那一个请求无法撤回）；
+- **缓存优先**：`load_turn_doc` 命中也发事件（前端错过原事件可追补），与手动按钮
+  共用 `pipeline::generate_live_turn`（provider → trust 解析 → 落盘），同巡只花一次钱；
+- 结果经 `TutorialLiveBus`（`event_bus.rs` 定义）广播 `TutorialLiveEvent`，ipc 转发为
+  前端事件 `tutorial-live-turn`；失败只 log、不重试——下一巡是天然重试。
+
+**不做 streaming**：`TurnDoc` 是整块 JSON，解析需要完整响应，流式无法提前渲染。
+实测单巡时延（glm-5.3-flashx）：reasoning_effort=high 约 4-17 秒，low 约 3-8 秒；
+切牌窗口 10-20 秒，**抢先模式建议配 low**。
+
 ## 5. 配置
 
 ```toml
@@ -115,6 +132,7 @@ upload_consent = false    # 出网同意（已有）
 enabled = false           # 实时教练默认关（ToS 与干扰顾虑，见 ROADMAP 非目标）
 max_per_turn = 1          # 每巡提示上限（v1 固定 1）
 deep_dive_button = true   # 是否显示「详细讲解」入口（真正出网仍需 upload_consent）
+auto_policy = "off"       # D-0016：off = 仅手动按钮；all = 每次摸牌后台抢先生成一巡讲解
 ```
 
 模板层**不涉及出网**，只受 `coach.enabled` 约束；深讲层额外要求 `outbound_allowed()`（即 `tutorial.enabled && upload_consent && llm.is_configured()`）。
@@ -123,6 +141,7 @@ deep_dive_button = true   # 是否显示「详细讲解」入口（真正出网�
 
 - **磁贴**：`frontend/src/tiles/CommentaryTile.tsx`（新文件，上游目录内的 fork 增量）。按磁贴五处登记惯例接线：`tiles/defaults.ts`（`TileId` / `ALL_TILES` / `DEFAULT_LAYOUTS` + `DEFAULT_LAYOUTS_3P` / `TILE_TITLES`）、`tiles/registry.tsx`（`renderTile` case）、四语言 `tile.commentary`。`defaults.ts` 与 `registry.tsx` 是上游文件，改动为纯追加并在 PR 描述申报（AGENTS 规则 1）。
 - **磁贴内容**：当前讲解句（Mahgen 渲染句中牌名）+「详细讲解」按钮 + 静音按钮 + 深讲结果展开区（`TurnDoc.explanation_zh` + 数字表）。
+- **自动模式呈现**（D-0016）：`useTauriBridge` 监听 `tutorial-live-turn` 写入 `coach.autoDoc`；摸牌（bot-response）时置 `autoPending`——磁贴先显示「AI 讲解生成中…」，事件到达自动渲染讲解框；静音时完全抑制；新鲜的 autoDoc 优先于可能过期的手动 deepDoc。
 - **store**：`tutorialStore` 增加 coach 切片（开关/静音/当前句/深讲 doc + loading），事件接进 `hooks/useTauriBridge.ts` 既有分发点（不另开监听）。
 - **overlay 窗口呈现**：列为后续项（涉及 overlay 三件套同步，见 AGENTS 陷阱清单），v1 不做。
 
@@ -135,4 +154,4 @@ deep_dive_button = true   # 是否显示「详细讲解」入口（真正出网�
 
 ## 8. 非目标
 
-- 不自动逐巡调 LLM（D-0008）；不做 overlay 呈现（后续）；不新增 event_bus 通道；不碰 `src/autoplay/`。
+- ~~不自动逐巡调 LLM（D-0008）~~、~~不新增 event_bus 通道~~——两条已被 D-0016（用户明示选择「摸牌时抢先」）收窄；不做 overlay 呈现（后续）；不碰 `src/autoplay/`。
