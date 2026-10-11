@@ -49,6 +49,8 @@
 
 详细设计：[docs/design/drills.md](design/drills.md)。
 
+外部参考（关卡/题目生成思路）：[sidhant947/Mahjong](https://github.com/sidhant947/Mahjong) —— Flutter 写的麻将消除类（Mahjong Solitaire）游戏，程序化生成「无限关卡」。牌种玩法与我们不同，参考的是其生成思路；GPL-3.0，只借鉴思路、不引入代码。
+
 - [ ] 题目 schema 与课程表：技能维度（牌效率 / 防守 / 立直与押受 / 副露 / 终局点数）× 难度级，难度由引擎参数定义（候选 margin、向听深度、场况复杂度）
 - [ ] 生成管线：约束采样 → analysis 引擎验证 → 答案键（引擎候选排名 + 数字）；精选种子题包（规则/役速查等教学内容并入，引擎复算答案）
 - [ ] 学习者模型与自适应选题：per-维度掌握度（EWMA，预留 Elo 演进）、甜蜜区选题（预期正确率 7-8 成）、弱维度加权、错题 spaced requeue
