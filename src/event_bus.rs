@@ -80,6 +80,12 @@ pub type PostTrackerBus = broadcast::Sender<TrackedEvent>;
 /// frontend.
 pub type HistoryBus = broadcast::Sender<HistoryEvent>;
 
+/// Fan-out for auto-generated live-turn explanations (fork-only,
+/// D-0014). Producer: `tutorial::live::auto_explain_worker` (one event
+/// per turn that became available — fresh LLM generation or cache hit).
+/// Consumer: `ipc` forwarder (`tutorial-live-turn` to the frontend).
+pub type TutorialLiveBus = broadcast::Sender<crate::tutorial::material::TutorialLiveEvent>;
+
 /// Default capacity. Live pacing produces ~1 second of mjai events at a time
 /// (start_kyoku + 13 tehai + a few tsumo/dahai pairs), which is tiny. The
 /// sizing constraint is the **one-shot GameRestore replay**: on reconnect the
@@ -133,6 +139,13 @@ pub fn post_tracker_bus() -> PostTrackerBus {
 }
 
 pub fn history_bus() -> HistoryBus {
+    let (tx, _rx) = broadcast::channel(STATUS_CAPACITY);
+    tx
+}
+
+pub fn tutorial_live_bus() -> TutorialLiveBus {
+    // Same sizing logic as the status buses: one small event per analyzed
+    // turn, bounded by the serial generation worker.
     let (tx, _rx) = broadcast::channel(STATUS_CAPACITY);
     tx
 }

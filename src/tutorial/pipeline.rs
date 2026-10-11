@@ -10,8 +10,10 @@ use anyhow::{bail, Context, Result};
 use crate::config::TutorialConfig;
 use crate::schema::MjaiEvent;
 use crate::tutorial::assemble::build_review_material;
-use crate::tutorial::download::parse_review_doc_trust;
-use crate::tutorial::material::{ReviewCoverage, ReviewDoc, ReviewMaterial};
+use crate::tutorial::download::{parse_review_doc_trust, parse_turn_doc_trust};
+use crate::tutorial::material::{
+    LiveTurnDoc, ReviewCoverage, ReviewDoc, ReviewMaterial, TurnMaterial,
+};
 use crate::tutorial::provider::{ChatRequest, OpenAiCompatProvider, TutorialProvider};
 use crate::tutorial::store::TutorialStore;
 use crate::tutorial::upload;
@@ -27,6 +29,10 @@ const TEMPERATURE: f32 = 0.2;
 /// budget before the JSON body — GLM-5.x reasoning needs a lot of it
 /// (measured against the real endpoint; unused budget is not billed).
 const MAX_TOKENS_PER_REQUEST: u32 = 16000;
+/// Single-turn live deep-dive knobs (same rationale as above, sized for
+/// one turn's JSON — see D-0008 / D-0014).
+const LIVE_TEMPERATURE: f32 = 0.2;
+const LIVE_MAX_TOKENS: u32 = 6000;
 
 #[derive(Debug)]
 pub struct GenerateOutcome {
@@ -119,6 +125,45 @@ pub async fn generate_review(
     };
     store.save_review(&doc)?;
     Ok(GenerateOutcome { doc, cached: false })
+}
+
+/// Generate one live-turn deep-dive: provider → trust parse → stamp →
+/// save (D-0008 manual button and D-0014 auto worker share this).
+///
+/// The caller owns the cache check and the consent gate — the IPC
+/// command checks the cache *before* consent (cached turns are served
+/// without consent), the auto worker re-reads config per job. The
+/// reasoning-effort hint is left unset in the request so the provider
+/// stamps its own `LlmConfig` default — same value, one source of truth.
+pub async fn generate_live_turn(
+    store: &TutorialStore,
+    provider: &dyn TutorialProvider,
+    material: &TurnMaterial,
+    key: &str,
+) -> Result<LiveTurnDoc> {
+    let resp = provider
+        .complete(ChatRequest {
+            messages: upload::build_turn_messages(material),
+            temperature: Some(LIVE_TEMPERATURE),
+            // Headroom for reasoning models: thinking + the JSON body
+            // share one budget (see MAX_TOKENS_PER_REQUEST above).
+            max_tokens: Some(LIVE_MAX_TOKENS),
+            reasoning_effort: None,
+        })
+        .await
+        .context("LLM request failed")?;
+    // Trust passthrough (D-0013, current stage): keep the reply
+    // verbatim; this only extracts the JSON and stamps our junme.
+    let doc =
+        parse_turn_doc_trust(&resp.content, material).context("LLM reply was not keepable JSON")?;
+    let live_doc = LiveTurnDoc {
+        key: key.to_string(),
+        doc,
+        model: resp.model,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    store.save_turn_doc(&live_doc)?;
+    Ok(live_doc)
 }
 
 #[cfg(test)]

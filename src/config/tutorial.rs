@@ -47,6 +47,28 @@ pub struct CoachConfig {
     /// bypass `upload_consent` — the click errors with a consent hint
     /// instead.
     pub deep_dive_button: bool,
+    /// When deep-dives are generated automatically (D-0014). `Off` keeps
+    /// the manual button as the only LLM trigger; `All` fires one
+    /// background request per own draw (pre-draw racing — see
+    /// `tutorial::live::auto_explain_worker`). Both paths share the same
+    /// per-turn cache, so an auto-generated turn costs the manual click
+    /// nothing.
+    pub auto_policy: AutoPolicy,
+}
+
+/// Auto-generation policy for live deep-dives (D-0014).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoPolicy {
+    /// Never auto-generate; only the manual deep-dive button calls the
+    /// LLM. The default — real-time guidance must be opt-in.
+    #[default]
+    Off,
+    /// Generate at every own draw: the request races the player's discard
+    /// window (~3-8 s LLM latency vs 10-20 s window), so the explanation
+    /// usually lands before the decision. One request per turn, capped by
+    /// the serial worker queue.
+    All,
 }
 
 /// OpenAI-compatible endpoint credentials for the tutorial LLM.
@@ -116,6 +138,7 @@ impl Default for CoachConfig {
             enabled: false,
             max_per_turn: 1,
             deep_dive_button: true,
+            auto_policy: AutoPolicy::Off,
         }
     }
 }
@@ -273,22 +296,29 @@ mod tests {
         assert!(!d.enabled, "coach must default to off");
         assert_eq!(d.max_per_turn, 1);
         assert!(d.deep_dive_button);
+        assert_eq!(d.auto_policy, AutoPolicy::Off, "auto must default to off");
 
         let mut cfg = AppConfig::default();
         cfg.tutorial.coach = CoachConfig {
             enabled: true,
             max_per_turn: 2,
             deep_dive_button: false,
+            auto_policy: AutoPolicy::All,
         };
         let body = toml::to_string_pretty(&cfg).unwrap();
         assert!(
             body.contains("[tutorial.coach]"),
             "expected a [tutorial.coach] table in:\n{body}"
         );
+        assert!(
+            body.contains("auto_policy = \"all\""),
+            "expected the snake_case auto_policy value in:\n{body}"
+        );
         let back: AppConfig = toml::from_str(&body).unwrap();
         assert!(back.tutorial.coach.enabled);
         assert_eq!(back.tutorial.coach.max_per_turn, 2);
         assert!(!back.tutorial.coach.deep_dive_button);
+        assert_eq!(back.tutorial.coach.auto_policy, AutoPolicy::All);
 
         // A legacy file with [tutorial] but no [tutorial.coach] parses
         // with the disabled default.
@@ -297,5 +327,6 @@ mod tests {
         )
         .unwrap();
         assert!(!legacy.tutorial.coach.enabled);
+        assert_eq!(legacy.tutorial.coach.auto_policy, AutoPolicy::Off);
     }
 }

@@ -32,12 +32,12 @@ pub use assemble::{
 };
 pub use context::TutorialContext;
 pub use download::{parse_review_doc, parse_turn_doc};
-pub use live::{drive_loop, LiveCoachHandle, LiveTurn};
+pub use live::{auto_explain_worker, drive_loop, AutoJob, LiveCoachHandle, LiveTurn};
 pub use material::{
     CandidateNumbers, EngineNumbers, LiveTurnDoc, ReviewCoverage, ReviewDoc, ReviewMaterial,
-    TurnContext, TurnDoc, TurnMaterial,
+    TurnContext, TurnDoc, TurnMaterial, TutorialLiveEvent,
 };
-pub use pipeline::{generate_review, GenerateOutcome};
+pub use pipeline::{generate_live_turn, generate_review, GenerateOutcome};
 pub use provider::{
     ChatMessage, ChatRequest, ChatResponse, OpenAiCompatProvider, TutorialProvider,
 };
