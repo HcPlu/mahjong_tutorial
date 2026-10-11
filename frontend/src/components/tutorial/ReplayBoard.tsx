@@ -24,6 +24,16 @@ export function ReplayBoard({ view, snapshot, ourSeat }: Props) {
   const me = view.players.find((p) => p.seat === ourSeat)
   const meSnap = snapshot.players[ourSeat]
   const drawn = meSnap?.drawn_tile ?? null
+  // The decision-window tehai already holds the drawn tile (14 tiles at
+  // zero melds). Drop one copy before encoding so the row shows 13 tiles
+  // next to the `+` badge instead of the drawn tile twice.
+  const fallbackHand = me?.hand ?? ''
+  const handSeq = (() => {
+    if (!meSnap || !drawn) return fallbackHand
+    const i = meSnap.tehai.indexOf(drawn)
+    if (i < 0) return fallbackHand
+    return mjaiToMahgen(meSnap.tehai.filter((_, k) => k !== i))
+  })()
 
   return (
     <div className="space-y-3">
@@ -50,7 +60,7 @@ export function ReplayBoard({ view, snapshot, ourSeat }: Props) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Mahgen seq={me.hand} kind="board-hand" />
+            <Mahgen seq={handSeq} kind="board-hand" />
             {drawn && (
               <span className="mx-1 text-muted-foreground">+</span>
             )}
