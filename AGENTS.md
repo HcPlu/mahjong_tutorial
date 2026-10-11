@@ -97,6 +97,7 @@ bash scripts/package-zip.sh <target-triple>
 
 - **目录约定**：fork 新增的治理与文档放 `docs/`；教程后端代码放 `src/tutorial/`（建模块时配 `README.md`，遵守既有惯例）；教程前端放 `frontend/src/routes/Tutorial/`、`frontend/src/stores/tutorialStore.ts`、`frontend/src/components/tutorial/`。
 - **决策必须留痕**：影响架构、目录、依赖、产品方向的决定，在 [docs/DECISIONS.md](docs/DECISIONS.md) 追加一条（格式见该文件），然后才动手。
+- **进度与 prompt 留痕**（D-0015）：本仓库为 AI 驱动开发，每条提出需求/改动/提问/决策的用户 prompt 都要按 [docs/progress/README.md](docs/progress/README.md) 记入当日日志（原文照抄、分类、追加式），并同步 INDEX.md；收工前完成。
 - **同步上游**：`git remote add upstream https://github.com/shinkuan/Akagi.git && git fetch upstream && git merge upstream/v3`。合并冲突优先保上游、fork 改动重放；`src/tutorial/`、`docs/`、`frontend/src/components/tutorial/` 等纯 fork 目录不应有冲突。
 - **分支模型**：`v3` 为主分支（与上游同名同历史），功能开发用 `feat/<scope>-<slug>`、修复用 `fix/<issue>-<slug>`，完成后合并回 `v3`。
 

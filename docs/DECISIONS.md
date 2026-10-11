@@ -5,6 +5,13 @@
 
 ---
 
+## D-0015 · Progress 日志模块：docs/progress/ 按日记录 prompt 与产出
+
+- **背景**：本仓库为 AI 驱动开发（vibe），过程资产（主人给过的 prompt、每次改动的缘由）此前只散落在 git 提交信息与被 ignore 的 `.zcode/plans/` 里，会话结束即丢失；ROADMAP 管里程碑、DECISIONS 管架构决策，日常「做了什么、为什么做」无人承载。仓库主人 2026-10-11 明示需要 progress 监控。
+- **决定**：新增 `docs/progress/` 模块——按日一文件（`YYYY-MM-DD.md`，追加式）记录每条 prompt（原文照抄、超 15 行截断+摘要；分类对齐 Conventional Commits 另加 `ask`/`decision`）与动作/产出/提交；`INDEX.md` 倒序总览；`scripts/progress-report.sh` 出统计。记录义务写入 AGENTS §5，约束所有 agent session。
+- **理由**：prompt 原文是 vibe 项目最不可再生的资产（复盘「当时为什么这么改」全靠它）；markdown 追加式零依赖、git 天然版本化；与 ROADMAP/DECISIONS 分层不重叠。
+- **代价**：每轮收工多一步记录（秒级）；日志与 git 历史部分冗余；prompt 原文入库意味着过程对话随之公开（个人项目可接受，密钥按规则永不记录）。
+
 ## D-0014 · 删除 AGENTS.md 硬性规则第 8 条；新增「最小实现」等工作规则
 
 - **背景**：仓库主人 2026-10-11 明示两件事：其一，第 8 条（教程定位/代打红线）经 D-0011 收窄后无需再作为硬性规则存在；其二，现行工作方式导致代理产出防御性、过度复杂的代码和过重的测试，要求转向最小实现。
