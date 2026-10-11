@@ -61,17 +61,21 @@ describe('Overlay autoplay toggle', () => {
     await waitFor(() => expect(btn.getAttribute('aria-pressed')).toBe('true'))
   })
 
-  it('reverts the optimistic state when the command fails', async () => {
+  it('converges on the backend state when the command fails', async () => {
+    // Toggle write fails while the backend still has autoplay enabled
+    // (e.g. the persist raced another window) — the button must settle
+    // on the truth, not blindly flip back to a lie.
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === 'get_config') return Promise.resolve(config(false))
+      if (cmd === 'get_config') return Promise.resolve(config(true))
       return Promise.reject(new Error('persist failed'))
     })
     render(<Overlay />)
     const btn = await waitFor(() =>
-      screen.getByRole('button', { name: 'overlay.auto_on_title' }),
+      screen.getByRole('button', { name: 'overlay.auto_off_title' }),
     )
     fireEvent.click(btn)
-    await waitFor(() => expect(btn.getAttribute('aria-pressed')).toBe('false'))
+    expect(invokeMock).toHaveBeenCalledWith('set_autoplay_enabled', { enabled: false })
+    await waitFor(() => expect(btn.getAttribute('aria-pressed')).toBe('true'))
   })
 
   it('re-syncs when a Settings save broadcasts overlay-config', async () => {

@@ -85,11 +85,18 @@ export function Overlay() {
 
   // In-game autoplay toggle: applies immediately (the backend flips the
   // shared config, and the manager re-reads it every decision), optimistic
-  // with a revert on failure.
+  // with a convergence on failure: refetch what the backend actually has
+  // instead of blindly flipping back — a blind revert can disagree with
+  // the real setting (e.g. the write raced another window's save), and a
+  // button that lies about its state invites a wrong-direction click.
   const toggleAuto = () => {
     const next = !auto
     setAuto(next)
-    invoke('set_autoplay_enabled', { enabled: next }).catch(() => setAuto(!next))
+    invoke('set_autoplay_enabled', { enabled: next }).catch(() => {
+      invoke<AppConfig>('get_config')
+        .then((c) => setAuto(c.autoplay?.enabled ?? false))
+        .catch(() => setAuto(!next))
+    })
   }
 
   return (
