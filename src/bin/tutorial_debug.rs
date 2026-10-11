@@ -233,7 +233,9 @@ async fn main() {
         return;
     }
 
-    if !cfg.tutorial.outbound_allowed() {
+    // --dump --fake is offline (scripted replies): it may run without
+    // consent or a configured endpoint — no network is touched.
+    if !cfg.tutorial.outbound_allowed() && !(dump && fake) {
         eprintln!(
             "outbound not allowed: enabled={} consent={} llm_configured={} \
              (set [tutorial] in config.toml and/or TUTORIAL_LLM_API_KEY)",
@@ -250,7 +252,16 @@ async fn main() {
     // reasoning_effort) — the app never needs rebuilding for this.
     if dump {
         let botref = store.load_botref(&record.id).ok().flatten();
-        dump_game(&cfg, &events, seat, &record.id, coverage, botref.as_ref()).await;
+        dump_game(
+            &cfg,
+            &events,
+            seat,
+            &record.id,
+            coverage,
+            botref.as_ref(),
+            fake,
+        )
+        .await;
         return;
     }
 
@@ -868,6 +879,7 @@ async fn dump_game(
     game_id: &str,
     coverage: ReviewCoverage,
     botref: Option<&akagi::tutorial::material::BotRefDoc>,
+    fake: bool,
 ) {
     use akagi::tutorial::provider::{ChatRequest, OpenAiCompatProvider, TutorialProvider};
 
@@ -879,7 +891,13 @@ async fn dump_game(
         std::process::exit(2);
     }
     let redacted = akagi::tutorial::upload::redact(&material);
-    let provider = OpenAiCompatProvider::new(&cfg.tutorial.llm).expect("provider");
+    // --fake swaps in the scripted offline provider: the viewer then
+    // shows exactly what WOULD be uploaded, without spending a call.
+    let provider: std::sync::Arc<dyn TutorialProvider> = if fake {
+        std::sync::Arc::new(SimFakeProvider)
+    } else {
+        std::sync::Arc::new(OpenAiCompatProvider::new(&cfg.tutorial.llm).expect("provider"))
+    };
 
     let mut chunks: Vec<DumpChunk> = Vec::new();
     for chunk in redacted.turns.chunks(6) {
