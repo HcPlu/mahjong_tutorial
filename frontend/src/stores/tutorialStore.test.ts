@@ -164,3 +164,26 @@ describe('tutorialStore coach auto state (D-0014)', () => {
     expect(st().muted).toBe(false)
   })
 })
+
+describe('llm log', () => {
+  it('appends with increasing ids and caps the history at 50', async () => {
+    const { useTutorialStore } = await freshStore()
+    const st = () => useTutorialStore.getState()
+    for (let i = 0; i < 60; i++) {
+      st().appendLlmLog({
+        ts: Date.now(),
+        junme: i + 1,
+        model: 'm',
+        latencyMs: null,
+        source: 'auto',
+        ok: true,
+      })
+    }
+    const log = st().llmLog
+    expect(log).toHaveLength(50)
+    // The cap keeps the newest 50 — junme 11..60 — and ids stay increasing.
+    expect(log[0].junme).toBe(11)
+    expect(log[49].junme).toBe(60)
+    expect(log[49].id).toBeGreaterThan(log[0].id)
+  })
+})

@@ -147,7 +147,7 @@ auto_policy = "off"       # D-0016：off = 仅手动按钮；all = 每次摸牌�
 - **磁贴内容**：当前讲解句（Mahgen 渲染句中牌名）+「详细讲解」按钮 + 静音按钮 + 深讲结果展开区（`TurnDoc.explanation_zh` + 数字表）。
 - **自动模式呈现**（D-0016）：`useTauriBridge` 监听 `tutorial-live-turn` 写入 `coach.autoDoc`；摸牌（bot-response）时置 `autoPending`——磁贴先显示「AI 讲解生成中…」，事件到达自动渲染讲解框；静音时完全抑制；新鲜的 autoDoc 优先于可能过期的手动 deepDoc。
 - **store**：`tutorialStore` 增加 coach 切片（开关/静音/当前句/深讲 doc + loading），事件接进 `hooks/useTauriBridge.ts` 既有分发点（不另开监听）。
-- **overlay 窗口呈现**（D-0018 落地）：`routes/Overlay.tsx` 在建议列表下方渲染自动讲解面板（「第N巡」+ 标题 + 正文，`tileNamesZh` 转中文牌名，`line-clamp` 限高；bot-response 置 pending、`tutorial-live-turn` 落讲解）；header 增「讲解」按钮（紫色，与 AUTO 并列）——一键 `set_coach_auto`：开 = `coach.enabled + auto_policy="all"`，关 = 仅降 `auto_policy`。事件经 `app.emit` 全窗口广播、capability 已含 `core:event:default`，无需动 overlay 三件套；`drive_loop` 每决策现读 config，翻转下一次决策即生效。
+- **overlay 窗口呈现**（D-0018 落地）：`routes/Overlay.tsx` 在建议列表**上方**渲染自动讲解面板（「第N巡」+ 标题 + 正文，`tileNamesZh` 转中文牌名，`line-clamp` 限高；bot-response 置 pending、`tutorial-live-turn` 落讲解）；header 增「讲解」按钮（紫色，与 AUTO 并列）——一键 `set_coach_auto`：开 = `coach.enabled + auto_policy="all"`，关 = 仅降 `auto_policy`。事件经 `app.emit` 全窗口广播、capability 已含 `core:event:default`，无需动 overlay 三件套；`drive_loop` 每决策现读 config，翻转下一次决策即生效。窗口尺寸：`overlay.rs` 高度公式带 `explain_panel` 参数（默认 118px / 下限 80px，宽度 360），`ensure_default_size` 只增不减——面板开启时把旧几何升到面板感知默认值；主窗口另有「LLM 记录」磁贴（`LlmLogTile`，默认隐藏）：每条讲解的时间/巡目/来源/摸牌→到达延迟/模型/标题或错误，上限 50 条。
 
 ## 7. 测试策略
 

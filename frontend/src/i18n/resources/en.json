@@ -199,6 +199,9 @@
     "empty": "No recorded games yet — play a game with capture on first",
     "back": "Back",
     "replay_title": "Replay & Coaching",
+    "llm_log_empty": "No in-game LLM explanations yet — enable auto explanations or click the deep-dive button",
+    "llm_log_auto": "auto",
+    "llm_log_manual": "manual",
     "overview": "Game overview",
     "coverage_key": "Key turns ({{n}})",
     "coverage_all": "All turns ({{n}})",
@@ -391,7 +394,8 @@
     "dora": "Dora",
     "phase": "Phase",
     "hide_x": "Hide {{title}}",
-    "commentary": "Coach"
+    "commentary": "Coach",
+    "llm_log": "LLM Log"
   },
   "common": {
     "live": "LIVE",

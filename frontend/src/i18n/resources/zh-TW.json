@@ -199,6 +199,9 @@
     "empty": "還沒有已記錄的對局——先開著擷取打一局",
     "back": "返回",
     "replay_title": "複盤講解",
+    "llm_log_empty": "對局中尚無 LLM 講解記錄——開啟自動講解或點「詳細講解」後會出現在這裡",
+    "llm_log_auto": "自動",
+    "llm_log_manual": "手動",
     "overview": "全域總評",
     "coverage_key": "關鍵巡（{{n}}）",
     "coverage_all": "全部巡（{{n}}）",
@@ -391,7 +394,8 @@
     "dora": "寶牌",
     "phase": "階段",
     "hide_x": "隱藏 {{title}}",
-    "commentary": "即時講解"
+    "commentary": "即時講解",
+    "llm_log": "LLM 記錄"
   },
   "common": {
     "live": "即時",

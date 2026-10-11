@@ -131,6 +131,10 @@ pub fn run() {
     let proxy_enabled = cfg.proxy.enabled;
     let autoplay_enabled = cfg.autoplay.enabled;
     let overlay_cfg = cfg.overlay.clone();
+    // The overlay reserves window height for the fork's explanation panel
+    // while in-game auto explanations are on (D-0018).
+    let coach_auto =
+        cfg.tutorial.coach.enabled && cfg.tutorial.coach.auto_policy != config::AutoPolicy::Off;
 
     // Game-state tracker handle is built up front so AppState can carry
     // the Arc, but the consumer task is spawned inside `.setup()` once
@@ -218,7 +222,7 @@ pub fn run() {
                 // Reopen the suggestion overlay if it was left enabled. Safe
                 // before any game data exists — it renders its empty state and
                 // fills in on the first `bot-response`.
-                ipc::overlay::reconcile(app.handle(), &overlay_cfg);
+                ipc::overlay::reconcile(app.handle(), &overlay_cfg, coach_auto);
 
                 // The overlay is an accessory window, not a co-equal one. Tauri
                 // exits when *all* windows close, and the overlay counts — so

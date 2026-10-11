@@ -199,6 +199,9 @@
     "empty": "保存された対局がありません。キャプチャを有効にして対局してください",
     "back": "戻る",
     "replay_title": "再生とコーチング",
+    "llm_log_empty": "対局中の LLM 解説はまだありません。自動解説をオンにするか詳細解説ボタンを押すとここに表示されます",
+    "llm_log_auto": "自動",
+    "llm_log_manual": "手動",
     "overview": "全体評",
     "coverage_key": "重要巡（{{n}}）",
     "coverage_all": "全巡（{{n}}）",
@@ -391,7 +394,8 @@
     "dora": "ドラ",
     "phase": "フェーズ",
     "hide_x": "{{title}} を非表示",
-    "commentary": "コーチ"
+    "commentary": "コーチ",
+    "llm_log": "LLM ログ"
   },
   "common": {
     "live": "ライブ",

@@ -199,6 +199,9 @@
     "empty": "还没有已记录的对局——先开着抓包打一局",
     "back": "返回",
     "replay_title": "复盘讲解",
+    "llm_log_empty": "对局中尚无 LLM 讲解记录——开启自动讲解或点「详细讲解」后会出现在这里",
+    "llm_log_auto": "自动",
+    "llm_log_manual": "手动",
     "overview": "全局总评",
     "coverage_key": "关键巡（{{n}}）",
     "coverage_all": "全部巡（{{n}}）",
@@ -391,7 +394,8 @@
     "dora": "宝牌",
     "phase": "阶段",
     "hide_x": "隐藏 {{title}}",
-    "commentary": "实时讲解"
+    "commentary": "实时讲解",
+    "llm_log": "LLM 记录"
   },
   "common": {
     "live": "实时",

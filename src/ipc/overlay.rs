@@ -42,7 +42,7 @@ pub const CONFIG_EVENT: &str = "overlay-config";
 /// this label from the automatic restore and we do it ourselves.
 const RESTORE_FLAGS: StateFlags = StateFlags::POSITION.union(StateFlags::SIZE);
 
-const DEFAULT_WIDTH: f64 = 300.0;
+const DEFAULT_WIDTH: f64 = 360.0;
 const MIN_WIDTH: f64 = 190.0;
 
 // The rows split the window's height between them (see the `overlay-show` mahgen
@@ -57,12 +57,47 @@ const MIN_ROW_HEIGHT: f64 = 34.0;
 /// Roomy enough that the tile is worth glancing at without leaning in.
 const DEFAULT_ROW_HEIGHT: f64 = 62.0;
 
-fn default_height(top_n: usize) -> f64 {
-    CHROME_HEIGHT + top_n as f64 * DEFAULT_ROW_HEIGHT
+// The fork's explanation panel (D-0018) renders above the suggestion list
+// while in-game auto explanations are on. Both the starting height and the
+// floor reserve room for it so it never crushes the rows; with the panel
+// off the math is exactly the pre-panel size.
+const EXPLAIN_PANEL_DEFAULT_HEIGHT: f64 = 118.0;
+const EXPLAIN_PANEL_MIN_HEIGHT: f64 = 80.0;
+
+fn default_height(top_n: usize, explain_panel: bool) -> f64 {
+    CHROME_HEIGHT
+        + top_n as f64 * DEFAULT_ROW_HEIGHT
+        + if explain_panel {
+            EXPLAIN_PANEL_DEFAULT_HEIGHT
+        } else {
+            0.0
+        }
 }
 
-fn min_height(top_n: usize) -> f64 {
-    CHROME_HEIGHT + top_n as f64 * MIN_ROW_HEIGHT
+fn min_height(top_n: usize, explain_panel: bool) -> f64 {
+    CHROME_HEIGHT
+        + top_n as f64 * MIN_ROW_HEIGHT
+        + if explain_panel {
+            EXPLAIN_PANEL_MIN_HEIGHT
+        } else {
+            0.0
+        }
+}
+
+/// Grow-only fit for the explanation panel: a geometry saved before the
+/// panel existed is too short for it, so raise such windows to the
+/// panel-aware default. Deliberately larger windows keep their size, and
+/// with the panel off this is a no-op — shrinking stays the user's call.
+fn ensure_default_size<R: Runtime>(w: &WebviewWindow<R>, rows: usize) {
+    if let (Ok(size), Ok(scale)) = (w.inner_size(), w.scale_factor()) {
+        let want_w = DEFAULT_WIDTH;
+        let want_h = default_height(rows, true);
+        let cur_w = size.width as f64 / scale;
+        let cur_h = size.height as f64 / scale;
+        if cur_w < want_w - 0.5 || cur_h < want_h - 0.5 {
+            let _ = w.set_size(LogicalSize::new(cur_w.max(want_w), cur_h.max(want_h)));
+        }
+    }
 }
 
 pub fn get<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
@@ -70,7 +105,12 @@ pub fn get<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
 }
 
 /// Open the overlay, or re-apply the live settings to the one already open.
-pub fn open<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Result<()> {
+/// `coach_auto` reserves window height for the fork's explanation panel.
+pub fn open<R: Runtime>(
+    app: &AppHandle<R>,
+    cfg: &OverlayConfig,
+    coach_auto: bool,
+) -> tauri::Result<()> {
     let rows = cfg.clamped_top_n();
 
     if let Some(w) = get(app) {
@@ -78,15 +118,21 @@ pub fn open<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Resul
         // Raising `top_n` in Settings adds rows to a window that may already be
         // at its old floor, so the floor has to move with it — otherwise the new
         // rows just squeeze the existing ones.
-        w.set_min_size(Some(LogicalSize::new(MIN_WIDTH, min_height(rows))))?;
+        w.set_min_size(Some(LogicalSize::new(
+            MIN_WIDTH,
+            min_height(rows, coach_auto),
+        )))?;
+        if coach_auto {
+            ensure_default_size(&w, rows);
+        }
         w.show()?;
         return Ok(());
     }
 
     let w = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
         .title("Akagi Overlay")
-        .inner_size(DEFAULT_WIDTH, default_height(rows))
-        .min_inner_size(MIN_WIDTH, min_height(rows))
+        .inner_size(DEFAULT_WIDTH, default_height(rows, coach_auto))
+        .min_inner_size(MIN_WIDTH, min_height(rows, coach_auto))
         .decorations(false)
         .transparent(true)
         .always_on_top(cfg.always_on_top)
@@ -103,6 +149,11 @@ pub fn open<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Resul
     // macOS, so no in-page resize grip is needed.
     if let Err(e) = w.restore_state(RESTORE_FLAGS) {
         warn!("overlay: could not restore saved geometry: {e}");
+    }
+    // Geometry saved before the explanation panel existed is too short for
+    // it — grow such windows to the panel-aware default once.
+    if coach_auto {
+        ensure_default_size(&w, rows);
     }
 
     info!("overlay window opened");
@@ -130,17 +181,17 @@ pub fn close<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 ///
 /// Startup goes through here too even though `lib::run`'s `setup` closure is
 /// already on the main thread: one path, one set of rules.
-pub fn reconcile<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) {
+pub fn reconcile<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, coach_auto: bool) {
     let handle = app.clone();
     let cfg = cfg.clone();
-    if let Err(e) = app.run_on_main_thread(move || apply(&handle, &cfg)) {
+    if let Err(e) = app.run_on_main_thread(move || apply(&handle, &cfg, coach_auto)) {
         warn!("overlay: could not schedule reconcile on the main thread: {e}");
     }
 }
 
-fn apply<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) {
+fn apply<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, coach_auto: bool) {
     let result = if cfg.enabled {
-        open(app, cfg)
+        open(app, cfg, coach_auto)
     } else {
         close(app)
     };
@@ -162,18 +213,18 @@ mod tests {
     use crate::config::{TOP_N_MAX, TOP_N_MIN};
 
     /// The rows split the window's height, so a window sized for three rows
-    /// squashes five into an unreadable smear. Both the starting height and the
-    /// floor have to grow with `top_n` — a fixed height is the bug this replaced.
+    /// squashes five into an unreadable smear. Both the starting height and
+    /// the floor have to grow with `top_n` — a fixed height is the bug this replaced.
     #[test]
     fn window_height_grows_with_the_row_count() {
         for n in TOP_N_MIN..TOP_N_MAX {
             assert!(
-                min_height(n + 1) > min_height(n),
+                min_height(n + 1, false) > min_height(n, false),
                 "floor must rise from {n} to {} rows",
                 n + 1
             );
             assert!(
-                default_height(n + 1) > default_height(n),
+                default_height(n + 1, false) > default_height(n, false),
                 "starting height must rise from {n} to {} rows",
                 n + 1
             );
@@ -185,7 +236,7 @@ mod tests {
     #[test]
     fn floor_leaves_every_row_its_minimum() {
         for n in TOP_N_MIN..=TOP_N_MAX {
-            let per_row = (min_height(n) - CHROME_HEIGHT) / n as f64;
+            let per_row = (min_height(n, false) - CHROME_HEIGHT) / n as f64;
             assert!(
                 per_row >= MIN_ROW_HEIGHT,
                 "{n} rows get {per_row}px each, below the {MIN_ROW_HEIGHT}px minimum"
@@ -196,7 +247,29 @@ mod tests {
     #[test]
     fn the_starting_height_is_roomier_than_the_floor() {
         for n in TOP_N_MIN..=TOP_N_MAX {
-            assert!(default_height(n) > min_height(n));
+            assert!(default_height(n, false) > min_height(n, false));
+        }
+    }
+
+    /// The explanation panel reserves height only while it is on, and never
+    /// eats into the rows' own floor.
+    #[test]
+    fn explain_panel_reserves_height_without_crushing_the_rows() {
+        for n in TOP_N_MIN..=TOP_N_MAX {
+            assert!(
+                default_height(n, true) > default_height(n, false),
+                "panel-on starting height must exceed panel-off at {n} rows"
+            );
+            assert!(
+                min_height(n, true) > min_height(n, false),
+                "panel-on floor must exceed panel-off at {n} rows"
+            );
+            let per_row =
+                (min_height(n, true) - CHROME_HEIGHT - EXPLAIN_PANEL_MIN_HEIGHT) / n as f64;
+            assert!(
+                per_row >= MIN_ROW_HEIGHT,
+                "{n} rows get {per_row}px each with the panel on, below the {MIN_ROW_HEIGHT}px minimum"
+            );
         }
     }
 }

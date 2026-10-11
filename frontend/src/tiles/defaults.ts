@@ -18,6 +18,7 @@ export type TileId =
   | 'bot-show'
   | 'proxy-control'
   | 'coach'
+  | 'llm-log'
 
 export type Breakpoint = 'lg' | 'md' | 'sm' | 'xs'
 
@@ -43,9 +44,10 @@ export const ALL_TILES: TileId[] = [
   'bot-show',
   'proxy-control',
   'coach',
+  'llm-log',
 ]
 
-export const DEFAULT_HIDDEN: TileId[] = ['recommendations', 'coach']
+export const DEFAULT_HIDDEN: TileId[] = ['recommendations', 'coach', 'llm-log']
 
 // Default layout for the lg (12-col) breakpoint. RGL Responsive copies
 // layouts from lg → md → sm → xs when missing entries; for now we provide
@@ -225,4 +227,5 @@ export const TILE_TITLES: Record<TileId, string> = {
   'bot-show':        'Bot Display',
   'proxy-control':   'Proxy',
   'coach':           'Commentary',
+  'llm-log':         'LLM Log',
 }

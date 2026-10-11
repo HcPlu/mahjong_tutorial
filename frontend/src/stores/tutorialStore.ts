@@ -22,6 +22,27 @@ import type {
 
 const COVERAGE_KEY = 'akagi.tutorial.coverage'
 
+/** One recorded in-game LLM interaction (auto deep-dive or manual click) —
+ *  the tile-side view of what all.log records on the backend. */
+export type LlmLogEntry = {
+  id: number
+  /** Arrival time (`Date.now()`). */
+  ts: number
+  /** Turn the explanation belongs to. */
+  junme: number | null
+  model: string | null
+  /** Draw → arrival latency when observable (auto mode); null otherwise. */
+  latencyMs: number | null
+  source: 'auto' | 'manual'
+  ok: boolean
+  headline?: string | null
+  error?: string
+}
+
+/** Newest entries worth keeping in the tile without it becoming a history browser. */
+const LLM_LOG_CAP = 50
+let llmLogSeq = 0
+
 function loadCoverage(): ReviewCoverage {
   if (typeof localStorage === 'undefined') return 'key'
   return localStorage.getItem(COVERAGE_KEY) === 'all' ? 'all' : 'key'
@@ -98,6 +119,10 @@ type TutorialStore = {
   coachAutoTurnStart: () => void
   /** `tutorial-live-turn` arrived: publish it. */
   setAutoDoc: (doc: TurnDoc) => void
+
+  // --- in-game LLM activity log (D-0018) ---
+  llmLog: LlmLogEntry[]
+  appendLlmLog: (entry: Omit<LlmLogEntry, 'id'>) => void
 }
 
 async function fetchStep(gameId: string, index: number): Promise<ReplayStep | null> {
@@ -131,6 +156,8 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
     autoPending: false,
   },
 
+  llmLog: [],
+
   setCoachLine: (line) => set((s) => ({ coach: { ...s.coach, line } })),
   coachToggleMute: () => set((s) => ({ coach: { ...s.coach, muted: !s.coach.muted } })),
   coachReset: () =>
@@ -152,16 +179,40 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
   setAutoDoc: (doc) =>
     set((s) => ({ coach: { ...s.coach, autoDoc: doc, autoPending: false } })),
 
+  appendLlmLog: (entry) =>
+    set((s) => ({
+      llmLog: [...s.llmLog, { ...entry, id: ++llmLogSeq }].slice(-LLM_LOG_CAP),
+    })),
+
   explainLive: async () => {
     if (get().coach.deepLoading) return
     set((s) => ({ coach: { ...s.coach, deepLoading: true, deepError: null } }))
     try {
       const deepDoc = await invoke<TurnDoc>('tutorial_explain_live')
       set((s) => ({ coach: { ...s.coach, deepDoc, deepLoading: false } }))
+      get().appendLlmLog({
+        ts: Date.now(),
+        junme: deepDoc.junme,
+        model: null,
+        latencyMs: null,
+        source: 'manual',
+        ok: true,
+        headline: deepDoc.headline,
+      })
     } catch (e) {
+      const error = String(e)
       set((s) => ({
-        coach: { ...s.coach, deepLoading: false, deepError: String(e) },
+        coach: { ...s.coach, deepLoading: false, deepError: error },
       }))
+      get().appendLlmLog({
+        ts: Date.now(),
+        junme: null,
+        model: null,
+        latencyMs: null,
+        source: 'manual',
+        ok: false,
+        error,
+      })
     }
   },
 

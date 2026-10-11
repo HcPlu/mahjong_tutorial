@@ -139,10 +139,12 @@ pub async fn update_config(
     let bot_now_enabled = new_config.bot.enabled;
     let autoplay_now_enabled = new_config.autoplay.enabled;
     let new_overlay = new_config.overlay.clone();
+    let coach_auto = new_config.tutorial.coach.enabled
+        && new_config.tutorial.coach.auto_policy != AutoPolicy::Off;
     *state.config.write().await = new_config;
 
     // Open / close / retune the overlay window to match what was just saved.
-    overlay::reconcile(&app, &new_overlay);
+    overlay::reconcile(&app, &new_overlay, coach_auto);
 
     // Sync the history recorder's platform tag immediately. Subsequent
     // finalised games are stamped with the new tag; the in-flight buffer
@@ -233,7 +235,11 @@ pub async fn set_overlay_enabled(
         cfg.clone()
     };
     persist_config(&cfg, &state.config_path).map_err(|e| e.to_string())?;
-    overlay::reconcile(&app, &cfg.overlay);
+    overlay::reconcile(
+        &app,
+        &cfg.overlay,
+        cfg.tutorial.coach.enabled && cfg.tutorial.coach.auto_policy != AutoPolicy::Off,
+    );
     Ok(())
 }
 

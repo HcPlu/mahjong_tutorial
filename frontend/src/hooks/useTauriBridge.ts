@@ -36,6 +36,10 @@ import { getTutorialConfig } from '@/components/tutorial/configGate'
 // Module-level: the per-turn throttle outlives any single bridge mount.
 const coachThrottle = new CommentaryThrottle()
 
+// When the current draw's auto explanation was queued (bot response time) —
+// the draw→arrival delta is the latency the LLM log tile shows.
+let llmDrawAt: number | null = null
+
 const TOAST_SEVERITY: Record<Notification['level'], ToastSeverity> = {
   info: 'info',
   success: 'success',
@@ -139,6 +143,7 @@ export function useTauriBridge() {
         // Auto mode (D-0014): the backend queued a background generation
         // for this draw — show the pending state until the result event.
         if (tcfg.coach.auto_policy === 'all') {
+          llmDrawAt = Date.now()
           useTutorialStore.getState().coachAutoTurnStart()
         }
         const snap = useGameStore.getState().game
@@ -156,7 +161,18 @@ export function useTauriBridge() {
     // Auto-generated live deep-dive arrived (D-0014) — fresh generation
     // or cache replay; either way it belongs to the current draw.
     listen<TutorialLiveEvent>('tutorial-live-turn', (ev) => {
+      const latencyMs = llmDrawAt == null ? null : Date.now() - llmDrawAt
+      llmDrawAt = null
       useTutorialStore.getState().setAutoDoc(ev.doc)
+      useTutorialStore.getState().appendLlmLog({
+        ts: Date.now(),
+        junme: ev.doc.junme,
+        model: ev.model,
+        latencyMs,
+        source: 'auto',
+        ok: true,
+        headline: ev.doc.headline,
+      })
     }).then((u) => unlistens.push(u))
 
     // The overlay window can turn itself off (its × button). Mirror that back
