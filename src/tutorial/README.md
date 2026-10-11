@@ -194,7 +194,10 @@ auto_policy = "off"                   # off=仅手动深讲按钮；all=每次�
     中途关闭立即停）、缓存命中也发 `TutorialLiveBus` 事件、生成走与
     手动按钮共用的 `pipeline::generate_live_turn`。ipc 转发为前端事件
     `tutorial-live-turn`。headless 冒烟：`tutorial_debug --live-sim
-    [--fake|--no-consent|--limit N]`（sim 会话键稳定，二跑必全缓存）。
+    [--fake|--no-consent|--use-botref|--effort low|high|none|--limit N]`
+    （sim 会话键稳定，二跑必全缓存；`--use-botref` 用离线重放的
+    Mortal 真概率构建 prompt，`--dump` 把每巡上传原文/回显/时延
+    渲染进共享查看器 HTML）。
 - **自适应练习系统（M3，D-0009）**：设计见
   [docs/design/drills.md](../../docs/design/drills.md)。后端落点
   `src/tutorial/drills/`（题目 schema、生成管线、学习者模型、判题），判题

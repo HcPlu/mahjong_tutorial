@@ -35,6 +35,8 @@ async fn main() {
     let mut live_sim = false;
     let mut fake = false;
     let mut no_consent = false;
+    let mut use_botref = false;
+    let mut effort: Option<String> = None;
     let mut limit: Option<usize> = None;
 
     let mut args = std::env::args().skip(1);
@@ -54,6 +56,13 @@ async fn main() {
             "--live-sim" => live_sim = true,
             "--fake" => fake = true,
             "--no-consent" => no_consent = true,
+            "--use-botref" => use_botref = true,
+            "--effort" => {
+                effort = Some(
+                    args.next()
+                        .unwrap_or_else(|| usage("--effort needs low|medium|high|none")),
+                );
+            }
             "--limit" => {
                 limit = match args.next().map(|v| v.parse::<usize>()) {
                     Some(Ok(n)) if n > 0 => Some(n),
@@ -175,7 +184,10 @@ async fn main() {
     // derived from the game id, so a second run hits the disk cache and
     // must make zero provider calls.
     if live_sim {
-        live_sim_run(&cfg, &events, seat, &record.id, fake, no_consent, limit).await;
+        live_sim_run(
+            &cfg, &events, seat, &record.id, fake, no_consent, limit, use_botref, effort, dump,
+        )
+        .await;
         return;
     }
 
@@ -305,7 +317,7 @@ fn usage(msg: &str) -> ! {
     eprintln!("{msg}");
     eprintln!(
         "usage: tutorial-debug [--game <ulid|latest>] [--coverage key|all] [--refresh] [--json] [--inspect <junme>] [--botref] [--dump]\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20\x20live-sim: [--live-sim [--fake] [--no-consent] [--limit N]]"
+         \x20\x20\x20\x20\x20\x20\x20\x20\x20live-sim: [--live-sim [--fake] [--no-consent] [--use-botref] [--effort low|high|none] [--limit N] [--dump]]"
     );
     std::process::exit(2)
 }
@@ -340,12 +352,26 @@ impl akagi::tutorial::provider::TutorialProvider for SimFakeProvider {
     }
 }
 
-/// Wraps a provider and records every outbound attempt (count + elapsed),
-/// so the sim can prove "second run = 0 network calls".
+/// One captured live-sim request: exactly what left the machine and what
+/// came back, with the wall-clock latency — the input side of the dump
+/// viewer when `--live-sim --dump` is used.
+#[derive(Clone)]
+struct SimRecord {
+    system: String,
+    user: String,
+    reply: String,
+    model: Option<String>,
+    usage: Option<akagi::tutorial::provider::ChatUsage>,
+    elapsed_ms: u128,
+}
+
+/// Wraps a provider and records every outbound attempt (count + the full
+/// request/response pair), so the sim can prove "second run = 0 network
+/// calls" and render what the app actually uploads per turn.
 struct CountingProvider {
     inner: std::sync::Arc<dyn akagi::tutorial::provider::TutorialProvider>,
     calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    elapsed_ms: std::sync::Arc<std::sync::Mutex<Vec<u128>>>,
+    records: std::sync::Arc<std::sync::Mutex<Vec<SimRecord>>>,
 }
 
 #[async_trait::async_trait]
@@ -359,16 +385,31 @@ impl akagi::tutorial::provider::TutorialProvider for CountingProvider {
         req: akagi::tutorial::provider::ChatRequest,
     ) -> anyhow::Result<akagi::tutorial::provider::ChatResponse> {
         self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let system = req
+            .messages
+            .first()
+            .map(|m| m.content.clone())
+            .unwrap_or_default();
+        let user = req
+            .messages
+            .get(1)
+            .map(|m| m.content.clone())
+            .unwrap_or_default();
         let t0 = std::time::Instant::now();
         let resp = self.inner.complete(req).await?;
-        self.elapsed_ms
-            .lock()
-            .unwrap()
-            .push(t0.elapsed().as_millis());
+        self.records.lock().unwrap().push(SimRecord {
+            system,
+            user,
+            reply: resp.content.clone(),
+            model: resp.model.clone(),
+            usage: resp.usage.clone(),
+            elapsed_ms: t0.elapsed().as_millis(),
+        });
         Ok(resp)
     }
 }
 
+#[allow(clippy::too_many_arguments)] // private dev-tool entry point
 async fn live_sim_run(
     cfg: &akagi::config::AppConfig,
     events: &[akagi::schema::MjaiEvent],
@@ -377,6 +418,9 @@ async fn live_sim_run(
     fake: bool,
     no_consent: bool,
     limit: Option<usize>,
+    use_botref: bool,
+    effort: Option<String>,
+    dump: bool,
 ) {
     use akagi::game_state::tracker::GameTracker;
     use akagi::schema::MjaiEvent;
@@ -390,6 +434,9 @@ async fn live_sim_run(
     sim_cfg.tutorial.upload_consent = !no_consent;
     sim_cfg.tutorial.coach.enabled = true;
     sim_cfg.tutorial.coach.auto_policy = akagi::config::AutoPolicy::All;
+    if let Some(e) = effort {
+        sim_cfg.tutorial.llm.reasoning_effort = if e == "none" { None } else { Some(e) };
+    }
     if fake {
         // The fake factory never contacts anything, but the gates still
         // require a "configured" endpoint — stamp sim credentials so the
@@ -400,6 +447,37 @@ async fn live_sim_run(
         sim_cfg.tutorial.llm.model = "sim-fake".into();
     }
 
+    // --use-botref: replay each decision with the recorded Mortal answers
+    // (real candidate probabilities), so the prompts match what a live
+    // game uploads. Without it, the synthetic answer carries no show card
+    // and build_live_turn falls back to engine-top candidates.
+    let botref = if use_botref {
+        match akagi::tutorial::TutorialStore::new(resolve_dir(std::path::Path::new("./tutorial")))
+            .expect("open tutorial store")
+            .load_botref(game_id)
+        {
+            Ok(Some(d)) => {
+                println!(
+                    "# botref: {} turns from bot {} (recorded {})",
+                    d.turns.len(),
+                    d.bot,
+                    d.created_at
+                );
+                Some(d)
+            }
+            Ok(None) => {
+                eprintln!("no bot reference for {game_id} — run with --botref first");
+                std::process::exit(2);
+            }
+            Err(e) => {
+                eprintln!("botref load failed: {e:#}");
+                std::process::exit(2);
+            }
+        }
+    } else {
+        None
+    };
+
     // Single-pass replay: feed the tracker (with StartGame seat
     // injection, same as scan_decisions) and build the LIVE material at
     // every own-draw decision point via the production entry point.
@@ -407,6 +485,9 @@ async fn live_sim_run(
     let mut tracker = GameTracker::new();
     let mut our_draws = 0u32;
     let mut jobs: Vec<AutoJob> = Vec::new();
+    // junme → material, for pairing the dump viewer's decomposition table.
+    let mut materials: std::collections::HashMap<u32, akagi::tutorial::material::TurnMaterial> =
+        std::collections::HashMap::new();
     for ev in events {
         let ev = match ev {
             MjaiEvent::StartGame { id, .. } if id.is_none() => {
@@ -434,22 +515,59 @@ async fn live_sim_run(
         let Some(snap) = tracker.snapshot() else {
             continue;
         };
-        // Synthetic bot answer: tsumogiri of the drawn tile, no show card
-        // → build_live_turn falls back to engine-top candidates.
         let drawn = snap.players[seat as usize]
             .drawn_tile
             .clone()
             .or_else(|| snap.players[seat as usize].tehai.last().cloned())
             .unwrap_or_default();
-        let resp = akagi::bot::BotResponse {
-            action: MjaiEvent::Dahai {
-                actor: seat,
-                pai: drawn,
-                tsumogiri: true,
-            },
-            meta: None,
+        // Synthetic bot answer: with --use-botref, the recorded Mortal
+        // action + ranked show card (real probabilities); otherwise a
+        // tsumogiri with no show card (engine-top fallback).
+        let bot_turn = botref
+            .as_ref()
+            .and_then(|b| b.turns.iter().find(|t| t.junme == our_draws));
+        let (action, meta) = match bot_turn {
+            Some(t) => {
+                let items: Vec<serde_json::Value> = t
+                    .picks
+                    .iter()
+                    .map(
+                        |p| serde_json::json!({"label": p.label, "pais": [p.tile], "prob": p.prob}),
+                    )
+                    .collect();
+                let meta = Some(serde_json::json!({"show": {"title": "sim", "items": items}}));
+                let action = if let Some(tile) = t.action.strip_prefix("dahai:") {
+                    MjaiEvent::Dahai {
+                        actor: seat,
+                        pai: tile.into(),
+                        tsumogiri: false,
+                    }
+                } else if t.action == "reach" {
+                    MjaiEvent::Reach {
+                        actor: seat,
+                        pai: None,
+                    }
+                } else {
+                    MjaiEvent::Dahai {
+                        actor: seat,
+                        pai: drawn.clone(),
+                        tsumogiri: true,
+                    }
+                };
+                (action, meta)
+            }
+            None => (
+                MjaiEvent::Dahai {
+                    actor: seat,
+                    pai: drawn,
+                    tsumogiri: true,
+                },
+                None,
+            ),
         };
+        let resp = akagi::bot::BotResponse { action, meta };
         if let Some(material) = akagi::tutorial::live::build_live_turn(&snap, &resp, our_draws) {
+            materials.insert(material.junme, material.clone());
             jobs.push(AutoJob {
                 session_key: session_key.clone(),
                 material,
@@ -484,9 +602,10 @@ async fn live_sim_run(
     let (bus, _keeper) = tokio::sync::broadcast::channel(1024);
     let mut sub = bus.subscribe();
     let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let elapsed_ms = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let records: std::sync::Arc<std::sync::Mutex<Vec<SimRecord>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let factory_calls = calls.clone();
-    let factory_elapsed = elapsed_ms.clone();
+    let factory_records = records.clone();
     let factory = move |llm: &akagi::config::LlmConfig| -> anyhow::Result<
         std::sync::Arc<dyn akagi::tutorial::provider::TutorialProvider>,
     > {
@@ -498,12 +617,13 @@ async fn live_sim_run(
         Ok(std::sync::Arc::new(CountingProvider {
             inner,
             calls: factory_calls.clone(),
-            elapsed_ms: factory_elapsed.clone(),
+            records: factory_records.clone(),
         }))
     };
 
     let started = std::time::Instant::now();
     let queued = jobs.len();
+    let sim_llm = sim_cfg.tutorial.llm.clone();
     let (tx, rx) = tokio::sync::mpsc::channel(4);
     let worker = tokio::spawn(auto_explain_worker(
         rx,
@@ -534,13 +654,21 @@ async fn live_sim_run(
         cache_hits,
         started.elapsed(),
     );
-    if !elapsed_ms.lock().unwrap().is_empty() {
-        let list = elapsed_ms.lock().unwrap().clone();
+    if !records.lock().unwrap().is_empty() {
+        let list: Vec<u128> = records
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|r| r.elapsed_ms)
+            .collect();
         let min = list.iter().min().unwrap();
         let max = list.iter().max().unwrap();
         let avg = list.iter().sum::<u128>() / list.len() as u128;
         println!(
-            "# per-call latency: min {min} ms · avg {avg} ms · max {max} ms (n={})",
+            "# per-call latency: min {:.1}s · avg {:.1}s · max {:.1}s (n={})",
+            *min as f64 / 1000.0,
+            avg as f64 / 1000.0,
+            *max as f64 / 1000.0,
             list.len()
         );
     }
@@ -561,6 +689,138 @@ async fn live_sim_run(
     if events_out.len() > 8 {
         println!("  … {} more", events_out.len() - 8);
     }
+
+    // --live-sim --dump: render what each turn actually uploaded / got
+    // back into the shared viewer HTML, latency badge per turn.
+    if dump {
+        let records = records.lock().unwrap().clone();
+        if records.is_empty() {
+            println!("# nothing to dump (all turns came from cache)");
+        } else {
+            dump_live_sim(game_id, &sim_llm, records, &materials);
+        }
+    }
+}
+
+/// Render live-sim records through the shared viewer: each record is one
+/// "chunk" (one turn per request), junme parsed back out of the user
+/// message, decomposition paired with the material by junme.
+fn dump_live_sim(
+    game_id: &str,
+    llm: &akagi::config::LlmConfig,
+    records: Vec<SimRecord>,
+    materials: &std::collections::HashMap<u32, akagi::tutorial::material::TurnMaterial>,
+) {
+    let chunks: Vec<DumpChunk> = records
+        .iter()
+        .map(|r| {
+            // The marker is UTF-8 multi-byte ("巡" = 3 bytes) — slice on
+            // the marker's own len, never a hand-counted offset.
+            let marker = "=== 巡 ";
+            let junme = r
+                .user
+                .find(marker)
+                .and_then(|p| {
+                    let rest = &r.user[p + marker.len()..];
+                    let end = rest.find(" ===")?;
+                    rest[..end].parse::<u32>().ok()
+                })
+                .unwrap_or(0);
+            let material = materials.get(&junme);
+            let strict: Vec<String> = match material {
+                Some(m) => match akagi::tutorial::download::parse_turn_doc(&r.reply, m) {
+                    Ok(_) => Vec::new(),
+                    Err(e) => vec![format!("{e:#}")],
+                },
+                None => vec!["material missing for this turn".into()],
+            };
+            // Trust-parse against a stub carrying the real junme: the
+            // doc is kept verbatim either way, junme is stamped locally.
+            let stub = akagi::tutorial::material::TurnMaterial {
+                junme,
+                ..Default::default()
+            };
+            let (turns, parse_error) =
+                match akagi::tutorial::download::parse_turn_doc_trust(&r.reply, &stub) {
+                    Ok(doc) => {
+                        let material_numbers = material.and_then(|m| {
+                            m.candidates
+                                .iter()
+                                .find(|c| c.label == doc.recommended)
+                                .map(|c| c.numbers.clone())
+                        });
+                        (
+                            vec![DumpTurn {
+                                junme,
+                                recommended: doc.recommended.clone(),
+                                numbers: doc.numbers.clone(),
+                                headline: doc.headline.clone(),
+                                explanation: doc.explanation_zh.clone(),
+                                material_numbers,
+                            }],
+                            None,
+                        )
+                    }
+                    Err(e) => (Vec::new(), Some(format!("{e:#}"))),
+                };
+            DumpChunk {
+                system: r.system.clone(),
+                user: r.user.clone(),
+                raw_reply: r.reply.clone(),
+                model: r.model.clone(),
+                usage: r.usage.clone(),
+                elapsed_ms: r.elapsed_ms,
+                strict_kept: usize::from(strict.is_empty()),
+                strict_rejected: strict,
+                overview: None,
+                turns,
+                parse_error,
+            }
+        })
+        .collect();
+
+    let lat: Vec<u128> = records.iter().map(|r| r.elapsed_ms).collect();
+    let min = *lat.iter().min().unwrap_or(&0);
+    let max = *lat.iter().max().unwrap_or(&0);
+    let avg = lat.iter().sum::<u128>() / lat.len().max(1) as u128;
+    let mode = format!(
+        "live-sim 抢先单巡 · model {} · effort {} · 单巡时延 min {:.1}s / avg {:.1}s / max {:.1}s (n={})",
+        llm.model,
+        llm.reasoning_effort.as_deref().unwrap_or("未设"),
+        min as f64 / 1000.0,
+        avg as f64 / 1000.0,
+        max as f64 / 1000.0,
+        lat.len(),
+    );
+
+    let mut dir = resolve_dir(std::path::Path::new("./tutorial"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    dir.push("tutorial-dump");
+    dir.push(format!(
+        "live-{}-{}",
+        game_id,
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    ));
+    std::fs::create_dir_all(&dir).expect("create dump dir");
+    let html = render_dump_html(game_id, &mode, &chunks);
+    let view = dir.join("view.html");
+    std::fs::write(&view, html).expect("write view.html");
+    for (i, c) in chunks.iter().enumerate() {
+        std::fs::write(
+            dir.join(format!("prompt-{}.txt", i + 1)),
+            format!("{}\n\n{}", c.system, c.user),
+        )
+        .ok();
+        std::fs::write(dir.join(format!("reply-{}.txt", i + 1)), &c.raw_reply).ok();
+    }
+    println!("# live-sim dump written: {}", view.display());
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", &view.display().to_string()])
+        .spawn()
+        .ok();
 }
 
 // ---------- --dump: prompt / reply viewer (self-contained HTML) ----------
@@ -704,7 +964,18 @@ async fn dump_game(
         chrono::Local::now().format("%Y%m%d-%H%M%S")
     ));
     std::fs::create_dir_all(&dir).expect("create dump dir");
-    let html = render_dump_html(game_id, &cfg.tutorial.llm.model, coverage, &chunks);
+    let html = render_dump_html(
+        game_id,
+        &format!(
+            "复盘 · model <b>{}</b> · 覆盖 <b>{}</b>",
+            esc(&cfg.tutorial.llm.model),
+            match coverage {
+                ReviewCoverage::Key => "关键巡",
+                ReviewCoverage::All => "全部巡",
+            }
+        ),
+        &chunks,
+    );
     let view = dir.join("view.html");
     std::fs::write(&view, html).expect("write view.html");
     for (i, c) in chunks.iter().enumerate() {
@@ -746,12 +1017,7 @@ fn esc(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-fn render_dump_html(
-    game_id: &str,
-    model: &str,
-    coverage: ReviewCoverage,
-    chunks: &[DumpChunk],
-) -> String {
+fn render_dump_html(game_id: &str, mode: &str, chunks: &[DumpChunk]) -> String {
     let mut h = String::new();
     h.push_str("<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\">");
     h.push_str("<title>教程 LLM 输入/输出查看器</title><style>");
@@ -772,14 +1038,9 @@ fn render_dump_html(
         "<h1>教程 LLM 输入/输出查看器 · {}</h1>",
         esc(game_id)
     ));
-    let cov = match coverage {
-        ReviewCoverage::Key => "关键巡",
-        ReviewCoverage::All => "全部巡",
-    };
     h.push_str(&format!(
-        "<div class=\"meta\">model <b>{}</b> · 覆盖 <b>{}</b> · 决策 {} 巡 / {} 批 · 生成于 {} · 管线为信任直通(D-0013)，下方核对仅为诊断</div>",
-        esc(model),
-        cov,
+        "<div class=\"meta\">{} · 决策 {} 巡 / {} 批 · 生成于 {} · 管线为信任直通(D-0013)，下方核对仅为诊断</div>",
+        mode,
         chunks.iter().map(|c| c.user.matches("=== 巡").count()).sum::<usize>(),
         chunks.len(),
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
