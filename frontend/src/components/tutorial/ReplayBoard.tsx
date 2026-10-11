@@ -6,6 +6,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { Mahgen } from '@/components/Mahgen'
+import { mjaiToMahgen } from '@/lib/tileIdx'
 import { Badge } from '@/components/ui/badge'
 import type { GameStateSnapshot, MahgenView, PlayerMahgenView } from '@/types'
 
@@ -53,7 +54,7 @@ export function ReplayBoard({ view, snapshot, ourSeat }: Props) {
             {drawn && (
               <span className="mx-1 text-muted-foreground">+</span>
             )}
-            {drawn && <Mahgen seq={drawn} kind="board-hand" />}
+            {drawn && <Mahgen seq={mjaiToMahgen([drawn])} kind="board-hand" />}
           </div>
           {me.melds.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
