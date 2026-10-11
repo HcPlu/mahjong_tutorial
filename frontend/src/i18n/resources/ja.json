@@ -246,7 +246,8 @@
     "param_custom": "カスタム…",
     "thinking_default": "既定",
     "show_raw": "原文",
-    "show_translated": "中国語牌名"
+    "show_translated": "中国語牌名",
+    "has_explanation": "AI解説あり"
   },
   "coach": {
     "disabled": "コーチはオフです。設定 → AIチュートリアル で有効にしてください。",

@@ -89,7 +89,7 @@ prompt 文本**——两处没有编译期联动，靠这条 README 约束。
   `avg_score ← riichi_point>0 ? round : (dama_point>0 ? round : None)`。
 - **关键巡规则**（`is_key_turn`，纯引擎数字、表驱动测试）：①实际切牌
   不在 maintain 前 3 ②对手立直且我方 ≤1 向听 ③该局首个可切听巡
-  ④攻防最优切牌不同且均在候选。`ReviewCoverage::Key` 取关键巡 cap 12，
+  ④攻防最优切牌不同且均在候选。`ReviewCoverage::Key` 取全部关键巡，
   `All` 全部决策巡。
 
 ## 调试工具（`tutorial-debug`）

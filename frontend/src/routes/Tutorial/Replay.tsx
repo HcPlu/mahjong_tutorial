@@ -264,6 +264,12 @@ export function Replay({ gameId, onExit }: Props) {
                 {d.is_key && (
                   <Star className="ml-0.5 inline h-2.5 w-2.5 text-amber-500" />
                 )}
+                {st.doc?.turns.some((x) => x.junme === d.junme) && (
+                  <span
+                    className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 align-middle"
+                    title={t('tutorial.has_explanation')}
+                  />
+                )}
               </button>
             ))}
           </div>

@@ -246,7 +246,8 @@
     "param_custom": "Custom…",
     "thinking_default": "default",
     "show_raw": "Raw",
-    "show_translated": "中文牌名"
+    "show_translated": "中文牌名",
+    "has_explanation": "AI explanation available"
   },
   "coach": {
     "disabled": "Coach is off — enable it in Settings → AI Tutorial.",

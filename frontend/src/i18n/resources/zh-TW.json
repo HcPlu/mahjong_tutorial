@@ -246,7 +246,8 @@
     "param_custom": "自訂…",
     "thinking_default": "預設",
     "show_raw": "原文",
-    "show_translated": "中文牌名"
+    "show_translated": "中文牌名",
+    "has_explanation": "有 AI 講解"
   },
   "coach": {
     "disabled": "教練未開啟——在設定 → AI 教學 中打開。",

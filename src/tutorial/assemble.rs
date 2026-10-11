@@ -41,8 +41,6 @@ use crate::tutorial::material::{
 const KEY_TOP_N: usize = 3;
 /// Hard cap on candidates per turn (top-N + actual + defence pick).
 const MAX_CANDIDATES: usize = 5;
-/// Cap on key turns per game under [`ReviewCoverage::Key`].
-const MAX_KEY_TURNS: usize = 12;
 
 /// One recognised decision point: the material turn plus the facts the
 /// outline / key-turn selector need.
@@ -172,7 +170,6 @@ pub fn build_review_material(
         ReviewCoverage::Key => decisions
             .iter()
             .filter(|d| d.is_key)
-            .take(MAX_KEY_TURNS)
             .map(|d| d.material.clone())
             .collect(),
         ReviewCoverage::All => decisions.iter().map(|d| d.material.clone()).collect(),
