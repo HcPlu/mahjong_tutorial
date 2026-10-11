@@ -82,6 +82,24 @@ export function TutorialLlmCard({ draft, setDraft }: Props) {
           />
         </div>
 
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-sm font-medium">
+              {t('settings.tutorial.coach')}
+            </span>
+            <p className="text-xs text-muted-foreground">
+              {t('settings.tutorial.coach_hint')}
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={cfg.coach.enabled}
+            onChange={(e) => patchCoach({ enabled: e.target.checked })}
+            aria-label={t('settings.tutorial.coach')}
+          />
+        </div>
+
         <div className="grid gap-1.5">
           <span className="text-sm font-medium">
             {t('settings.tutorial.auto_policy')}

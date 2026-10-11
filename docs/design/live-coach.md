@@ -39,7 +39,7 @@ PostTrackerBus ──► tracker ──► AnalysisBus ──► ipc 事件 `ana
 
 | 规则 | 定义 |
 |---|---|
-| 总开关 | `[tutorial.coach] enabled`（默认 **false**），且受 `[tutorial] enabled` 总开关约束 |
+| 总开关 | `[tutorial.coach] enabled`（默认 **false**），且受 `[tutorial] enabled` 总开关约束。可在设置 → AI 教程（LLM）卡片的「对局中教练」开关切换，也可手改 config.toml |
 | 触发 | 收到 `bot-response` 且该巡（`bakaze + kyoku + turn_count` 为键）尚未出话 |
 | 每巡上限 | 至多 1 条（`max_per_turn`，v1 固定为 1） |
 | 规则去重 | 同巡所有命中规则按优先级排序，取最高 1 条渲染（并列时取维度靠前的） |

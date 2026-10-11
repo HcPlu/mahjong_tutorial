@@ -460,7 +460,9 @@
       "auto_policy": "In-game auto explanations",
       "auto_policy_hint": "\"Every draw\" starts a background explanation right after you draw (racing your discard decision); ~60-80 LLM calls per game, cost depends on the configured model, each turn is paid once.",
       "auto_policy_off": "Off (manual button only)",
-      "auto_policy_all": "Every draw"
+      "auto_policy_all": "Every draw",
+      "coach": "In-game coach",
+      "coach_hint": "Powers the Coach tile on the dashboard. Template hints are local and free; LLM explanations also need consent plus a configured endpoint."
     },
     "title": "Settings",
     "general": "General",
