@@ -31,6 +31,7 @@ async fn main() {
     let mut json = false;
     let mut inspect: Option<u32> = None;
     let mut botref = false;
+    let mut dump = false;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -45,6 +46,7 @@ async fn main() {
             }
             "--refresh" => refresh = true,
             "--botref" => botref = true,
+            "--dump" => dump = true,
             "--json" => json = true,
             "--inspect" => {
                 inspect = match args.next().map(|v| v.parse::<u32>()) {
@@ -205,6 +207,15 @@ async fn main() {
         std::process::exit(2);
     }
 
+    // --dump: render the exact prompt(s) uploaded and the LLM's raw
+    // replies into one self-contained HTML for eyeballing input/output
+    // quality. Re-run freely after changing config (model / coverage /
+    // reasoning_effort) — the app never needs rebuilding for this.
+    if dump {
+        dump_game(&cfg, &events, seat, &record.id, coverage).await;
+        return;
+    }
+
     let started = std::time::Instant::now();
     let outcome = generate_review(
         &cfg.tutorial,
@@ -268,7 +279,198 @@ async fn main() {
 fn usage(msg: &str) -> ! {
     eprintln!("{msg}");
     eprintln!(
-        "usage: tutorial-debug [--game <ulid|latest>] [--coverage key|all] [--refresh] [--json] [--inspect <junme>] [--botref]"
+        "usage: tutorial-debug [--game <ulid|latest>] [--coverage key|all] [--refresh] [--json] [--inspect <junme>] [--botref] [--dump]"
     );
     std::process::exit(2)
+}
+
+// ---------- --dump: prompt / reply viewer (self-contained HTML) ----------
+
+struct DumpChunk {
+    system: String,
+    user: String,
+    raw_reply: String,
+    model: Option<String>,
+    usage: Option<akagi::tutorial::provider::ChatUsage>,
+    elapsed_ms: u128,
+    /// Strict cross-check run purely as a DIAGNOSTIC for the viewer —
+    /// the pipeline itself is trust-passthrough (D-0013).
+    strict_rejected: Vec<String>,
+    strict_kept: usize,
+}
+
+async fn dump_game(
+    cfg: &akagi::config::AppConfig,
+    events: &[akagi::schema::MjaiEvent],
+    seat: u8,
+    game_id: &str,
+    coverage: ReviewCoverage,
+) {
+    use akagi::tutorial::provider::{ChatRequest, OpenAiCompatProvider, TutorialProvider};
+
+    let material = akagi::tutorial::build_review_material(events, seat, game_id, None, coverage)
+        .expect("assemble material");
+    if material.turns.is_empty() {
+        eprintln!("no reviewable decisions for this game/coverage");
+        std::process::exit(2);
+    }
+    let redacted = akagi::tutorial::upload::redact(&material);
+    let provider = OpenAiCompatProvider::new(&cfg.tutorial.llm).expect("provider");
+
+    let mut chunks: Vec<DumpChunk> = Vec::new();
+    for chunk in redacted.turns.chunks(6) {
+        let sub = akagi::tutorial::material::ReviewMaterial {
+            game_id: redacted.game_id.clone(),
+            seat: redacted.seat,
+            num_players: redacted.num_players,
+            player_name: None,
+            turns: chunk.to_vec(),
+        };
+        let msgs = akagi::tutorial::upload::build_messages(&sub);
+        let t0 = std::time::Instant::now();
+        let resp = provider
+            .complete(ChatRequest {
+                messages: msgs.clone(),
+                temperature: Some(0.2),
+                max_tokens: Some(16000),
+                reasoning_effort: cfg.tutorial.llm.reasoning_effort.clone(),
+            })
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("LLM request failed: {e:#}");
+                std::process::exit(1);
+            });
+        let elapsed_ms = t0.elapsed().as_millis();
+        let (strict_kept, strict_rejected) =
+            match akagi::tutorial::download::parse_review_doc_lenient(&resp.content, &sub) {
+                Ok((doc, rej)) => (doc.turns.len(), rej),
+                Err(e) => (0, vec![format!("parse failed outright: {e:#}")]),
+            };
+        chunks.push(DumpChunk {
+            system: msgs[0].content.clone(),
+            user: msgs[1].content.clone(),
+            raw_reply: resp.content.clone(),
+            model: resp.model.clone(),
+            usage: resp.usage.clone(),
+            elapsed_ms,
+            strict_rejected,
+            strict_kept,
+        });
+    }
+
+    // <config_root>/tutorial-dump/<game>-<hhmmss>/view.html (+ raw txts)
+    let mut dir = resolve_dir(std::path::Path::new("./tutorial"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    dir.push("tutorial-dump");
+    dir.push(format!(
+        "{}-{}",
+        game_id,
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    ));
+    std::fs::create_dir_all(&dir).expect("create dump dir");
+    let html = render_dump_html(game_id, &cfg.tutorial.llm.model, coverage, &chunks);
+    let view = dir.join("view.html");
+    std::fs::write(&view, html).expect("write view.html");
+    for (i, c) in chunks.iter().enumerate() {
+        std::fs::write(
+            dir.join(format!("prompt-{}.txt", i + 1)),
+            format!("{}\n\n{}", c.system, c.user),
+        )
+        .ok();
+        std::fs::write(dir.join(format!("reply-{}.txt", i + 1)), &c.raw_reply).ok();
+    }
+    println!("# dump written: {}", view.display());
+    // Open in the default browser (Windows); failure is non-fatal.
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", &view.display().to_string()])
+        .spawn()
+        .ok();
+}
+
+fn esc(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn render_dump_html(
+    game_id: &str,
+    model: &str,
+    coverage: ReviewCoverage,
+    chunks: &[DumpChunk],
+) -> String {
+    let mut h = String::new();
+    h.push_str("<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\">");
+    h.push_str("<title>教程 LLM 输入/输出查看器</title><style>");
+    h.push_str("body{font-family:system-ui,'Microsoft YaHei',sans-serif;margin:0;background:#111;color:#ddd;}");
+    h.push_str("h1{font-size:18px;padding:12px 16px;background:#1b1b1b;margin:0;}");
+    h.push_str(".meta{padding:8px 16px;color:#888;font-size:13px;border-bottom:1px solid #333;}");
+    h.push_str("section{padding:12px 16px;border-bottom:1px solid #333;}");
+    h.push_str("h2{font-size:15px;color:#7cc4ff;margin:8px 0;}");
+    h.push_str("pre{background:#181818;border:1px solid #333;border-radius:6px;padding:10px;white-space:pre-wrap;word-break:break-all;font-size:12px;line-height:1.55;max-height:420px;overflow:auto;}");
+    h.push_str(".cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;}");
+    h.push_str("@media(max-width:900px){.cols{grid-template-columns:1fr;}}");
+    h.push_str("table{border-collapse:collapse;width:100%;font-size:13px;}");
+    h.push_str("td,th{border:1px solid #333;padding:4px 8px;text-align:left;vertical-align:top;}");
+    h.push_str(".ok{color:#6c6;}.bad{color:#e66;}.warn{color:#eb6;}");
+    h.push_str(".tag{display:inline-block;background:#333;border-radius:4px;padding:1px 6px;margin-right:6px;font-size:11px;color:#bbb;}");
+    h.push_str("</style></head><body>");
+    h.push_str(&format!(
+        "<h1>教程 LLM 输入/输出查看器 · {}</h1>",
+        esc(game_id)
+    ));
+    let cov = match coverage {
+        ReviewCoverage::Key => "关键巡",
+        ReviewCoverage::All => "全部巡",
+    };
+    h.push_str(&format!(
+        "<div class=\"meta\">model <b>{}</b> · 覆盖 <b>{}</b> · 决策 {} 巡 / {} 批 · 生成于 {} · 管线为信任直通(D-0013)，下方核对仅为诊断</div>",
+        esc(model),
+        cov,
+        chunks.iter().map(|c| c.user.matches("=== 巡").count()).sum::<usize>(),
+        chunks.len(),
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+    ));
+
+    for (i, c) in chunks.iter().enumerate() {
+        let usage = match &c.usage {
+            Some(u) => format!(
+                "prompt {} tok · completion {} tok",
+                u.prompt_tokens.unwrap_or(0),
+                u.completion_tokens.unwrap_or(0)
+            ),
+            None => "usage 未上报".into(),
+        };
+        h.push_str(&format!(
+            "<section><h2>第 {} 批 <span class=\"tag\">{}</span><span class=\"tag\">{} ms</span><span class=\"tag\">{}</span><span class=\"tag\">严格核对: <b class=\"{}\">{} 通过 / {} 拒绝</b></span></h2>",
+            i + 1,
+            esc(c.model.as_deref().unwrap_or("?")),
+            c.elapsed_ms,
+            usage,
+            if c.strict_rejected.is_empty() { "ok" } else { "warn" },
+            c.strict_kept,
+            c.strict_rejected.len(),
+        ));
+        h.push_str("<div class=\"cols\"><div><h2>上传的 Prompt（system + user 原文）</h2><pre>");
+        h.push_str(&esc(&format!(
+            "【system】\n{}\n\n【user】\n{}",
+            c.system, c.user
+        )));
+        h.push_str("</pre></div><div><h2>LLM 原始输出（未做任何删改）</h2><pre>");
+        h.push_str(&esc(&c.raw_reply));
+        h.push_str("</pre></div></div>");
+        if !c.strict_rejected.is_empty() {
+            h.push_str("<h2>诊断 · 若按严格核对会拒绝的巡</h2><ul>");
+            for r in &c.strict_rejected {
+                h.push_str(&format!("<li class=\"bad\">{}</li>", esc(r)));
+            }
+            h.push_str("</ul>");
+        }
+        h.push_str("</section>");
+    }
+    h.push_str("</body></html>");
+    h
 }
