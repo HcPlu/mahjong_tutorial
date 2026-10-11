@@ -154,13 +154,15 @@ pub fn scan_decisions(events: &[MjaiEvent], seat: u8) -> Result<ScanResult> {
 }
 
 /// Assemble the review pipeline's input for one game and seat, keeping
-/// the turns selected by `coverage`.
+/// the turns selected by `coverage`. `botref` (offline bot replay) is
+/// attached per junme so the prompt can narrate 「你 vs bot」.
 pub fn build_review_material(
     events: &[MjaiEvent],
     seat: u8,
     game_id: &str,
     player_name: Option<String>,
     coverage: ReviewCoverage,
+    botref: Option<&crate::tutorial::material::BotRefDoc>,
 ) -> Result<ReviewMaterial> {
     let ScanResult {
         num_players,
@@ -170,9 +172,12 @@ pub fn build_review_material(
         ReviewCoverage::Key => decisions
             .iter()
             .filter(|d| d.is_key)
-            .map(|d| d.material.clone())
+            .map(|d| attach_bot(d.material.clone(), botref))
             .collect(),
-        ReviewCoverage::All => decisions.iter().map(|d| d.material.clone()).collect(),
+        ReviewCoverage::All => decisions
+            .iter()
+            .map(|d| attach_bot(d.material.clone(), botref))
+            .collect(),
     };
     Ok(ReviewMaterial {
         game_id: game_id.to_string(),
@@ -181,6 +186,17 @@ pub fn build_review_material(
         player_name,
         turns,
     })
+}
+
+/// Attach the matching bot reference turn, if one was recorded.
+fn attach_bot(
+    mut material: crate::tutorial::material::TurnMaterial,
+    botref: Option<&crate::tutorial::material::BotRefDoc>,
+) -> crate::tutorial::material::TurnMaterial {
+    material.bot = botref
+        .and_then(|b| b.turns.iter().find(|t| t.junme == material.junme))
+        .cloned();
+    material
 }
 
 /// Replay `events[0..=upto]` through a private tracker (with the same
@@ -434,6 +450,7 @@ fn build_decision(
             junme: pending.junme,
             tehai,
             draw,
+            bot: None,
             actual: format!("dahai:{actual}"),
             candidates,
             context: Some(context),
@@ -714,12 +731,30 @@ mod tests {
     #[test]
     fn coverage_key_keeps_key_turns_only() {
         let events = small_game();
+        // A botref with a pick on junme 1 exercises per-turn attachment.
+        let botref = crate::tutorial::material::BotRefDoc {
+            game_id: "01JTESTGAME0000000000000000".into(),
+            bot: "test".into(),
+            created_at: String::new(),
+            turns: vec![crate::tutorial::material::BotRefTurn {
+                junme: 1,
+                action: "dahai:E".into(),
+                picks: vec![crate::tutorial::material::BotRefPick {
+                    tile: "E".into(),
+                    label: "Discard".into(),
+                    prob: 0.9,
+                    chosen: true,
+                }],
+                source: None,
+            }],
+        };
         let key = build_review_material(
             &events,
             0,
             "01JTESTGAME0000000000000000",
             None,
             ReviewCoverage::Key,
+            Some(&botref),
         )
         .unwrap();
         let all = build_review_material(
@@ -728,8 +763,19 @@ mod tests {
             "01JTESTGAME0000000000000000",
             None,
             ReviewCoverage::All,
+            None,
         )
         .unwrap();
+        // Key coverage keeps junme 1 (fixture makes it key) → bot rides.
+        let j1 = key
+            .turns
+            .iter()
+            .find(|t| t.junme == 1)
+            .expect("junme 1 in key coverage");
+        assert_eq!(j1.bot.as_ref().expect("bot attached").action, "dahai:E");
+        assert!((j1.bot.as_ref().unwrap().picks[0].prob - 0.9).abs() < 1e-9);
+        // Without a botref nothing is attached.
+        assert!(all.turns.iter().all(|t| t.bot.is_none()));
         let scan = scan_decisions(&events, 0).unwrap();
         let key_count = scan.decisions.iter().filter(|d| d.is_key).count();
         assert_eq!(all.turns.len(), scan.decisions.len());

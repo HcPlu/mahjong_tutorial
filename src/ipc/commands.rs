@@ -1505,6 +1505,34 @@ pub async fn tutorial_generate_review(
         .map_err(|e| format!("{e:#}"))?
     };
     let ctx = state.tutorial.clone();
+    // Best-effort: make sure a bot reference exists so the prompt can
+    // narrate 你 vs bot (pipeline reads it from the store). Generating
+    // one spawns the offline bot replay (seconds, local-only, cached
+    // forever); any failure just degrades to a bot-less review.
+    {
+        let already = tokio::task::spawn_blocking({
+            let ctx = ctx.clone();
+            let gid = game_id.clone();
+            move || ctx.store.load_botref(&gid).map(|b| b.is_some())
+        })
+        .await
+        .map_err(|e| format!("tutorial botref join error: {e}"))?
+        .map_err(|e| format!("{e:#}"))?;
+        if !already {
+            let cfg_full = state.config.read().await.clone();
+            let history = state.history_store.clone();
+            let runtime = state.runtime.clone();
+            let notify = state.notify_bus.clone();
+            let gid = game_id.clone();
+            if let Err(e) = crate::ipc::tutorial_botref::generate_bot_reference(
+                &cfg_full, runtime, &ctx.store, &history, &gid, notify,
+            )
+            .await
+            {
+                tracing::debug!("bot reference pre-generation failed for {gid}: {e:#}");
+            }
+        }
+    }
     let outcome = crate::tutorial::pipeline::generate_review(
         &cfg,
         &ctx.store,

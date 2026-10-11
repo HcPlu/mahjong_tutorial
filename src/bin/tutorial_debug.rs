@@ -249,7 +249,8 @@ async fn main() {
     // quality. Re-run freely after changing config (model / coverage /
     // reasoning_effort) — the app never needs rebuilding for this.
     if dump {
-        dump_game(&cfg, &events, seat, &record.id, coverage).await;
+        let botref = store.load_botref(&record.id).ok().flatten();
+        dump_game(&cfg, &events, seat, &record.id, coverage, botref.as_ref()).await;
         return;
     }
 
@@ -866,11 +867,13 @@ async fn dump_game(
     seat: u8,
     game_id: &str,
     coverage: ReviewCoverage,
+    botref: Option<&akagi::tutorial::material::BotRefDoc>,
 ) {
     use akagi::tutorial::provider::{ChatRequest, OpenAiCompatProvider, TutorialProvider};
 
-    let material = akagi::tutorial::build_review_material(events, seat, game_id, None, coverage)
-        .expect("assemble material");
+    let material =
+        akagi::tutorial::build_review_material(events, seat, game_id, None, coverage, botref)
+            .expect("assemble material");
     if material.turns.is_empty() {
         eprintln!("no reviewable decisions for this game/coverage");
         std::process::exit(2);

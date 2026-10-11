@@ -105,9 +105,15 @@ pub struct TurnMaterial {
     /// Ranked candidates with their engine numbers. Empty when no
     /// engine output is available for this turn.
     pub candidates: Vec<CandidateNumbers>,
-    /// Situational frame (round, scores, riichi threats, dora).
+    /// Situational frame (round, scores, riichi threats, dora, rivers).
     /// Input-only; never validated on the way back.
     pub context: Option<TurnContext>,
+    /// What the configured subprocess bot would have done at this turn
+    /// (offline replay, D-0012 M4-lite) — input-only; lets the review
+    /// prompt narrate 「你 vs bot」. `None` when no bot reference exists
+    /// (never set by the live coach, whose candidates already carry the
+    /// bot's live probabilities).
+    pub bot: Option<BotRefTurn>,
 }
 
 /// Teaching material for one game, one seat — the input side of the

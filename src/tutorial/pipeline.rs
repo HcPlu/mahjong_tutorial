@@ -67,8 +67,25 @@ pub async fn generate_review(
         );
     }
 
-    let material = build_review_material(events, seat, game_id, player_name, coverage)
-        .context("failed to assemble review material from the recorded event stream")?;
+    // Bot reference (offline replay) rides along when cached: the prompt
+    // then narrates 你 vs bot per turn. Pure store read — generating a
+    // missing reference is the IPC layer's decision (it owns the runtime).
+    let botref = match store.load_botref(game_id) {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::debug!("botref load failed for {game_id}: {e:#} — reviewing without bot data");
+            None
+        }
+    };
+    let material = build_review_material(
+        events,
+        seat,
+        game_id,
+        player_name,
+        coverage,
+        botref.as_ref(),
+    )
+    .context("failed to assemble review material from the recorded event stream")?;
     if material.turns.is_empty() {
         bail!("no reviewable decision points for seat {seat} in this game");
     }

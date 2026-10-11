@@ -77,6 +77,10 @@ prompt 文本**——两处没有编译期联动，靠这条 README 约束。
   录制时若未标视角（id 为 None），装配器克隆该事件注入 `id = seat` 再喂，
   否则快照手牌全是 `"?"`。
 - **junme 口径**：我方第 N 次摸牌（含杠后岭上），与 live 深讲同口径；
+- **Bot 参照随题上载**：`generate_review` 从 store 读缓存的 botref（IPC 侧缺缓存时
+  先尽力生成一份），按 junme 附到每巡 `TurnMaterial.bot`，prompt 渲染成
+  「Bot参照: 首选dahai:X；bot概率: …」，讲解即可对比「你 vs bot」；无 botref 时
+  自动降级为纯引擎讲解；
   不用快照 `turn_count`。junme 只在 `StartGame` 重置——**跨局连续**
   （E2 的第一巡接着 E1 计数），因此 outline / review / botref 里的
   junme 在一局游戏内全局唯一，前端可直接按 junme 查找。

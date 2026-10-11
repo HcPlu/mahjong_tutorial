@@ -84,12 +84,14 @@ fn system_prompt() -> String {
     // The output contract mirrors `material::ReviewDoc`'s serde shape.
     // If that type changes, change this string in the same commit.
     "你是麻将复盘教练，面向初中级玩家教学。输入的每个决策点都附有本地分析引擎预先算好的数字\
-     （向听 shanten 为整数、和率 win_rate 与铳率 deal_in_rate 为0-1小数、期望打点 avg_score 为整数点数）\
-     和局况（风局、本场、分数、已立直家、宝牌指示牌）。你的职责：\n\
+     （向听 shanten 为整数、和率 win_rate 与铳率 deal_in_rate 为0-1小数、期望打点 avg_score 为整数点数）、\
+     局况（风局、本场、分数、已立直家、宝牌指示牌、各家牌河与副露）。你的职责：\n\
      1. overview：2-3句总评本局整体表现（速度、防守、立直时机），可引用具体巡号；\n\
      2. 每巡给出 headline（一句话结论，不超过20字）与 explanation_zh（60-120字讲解：解释关键取舍，\
      对比实际选择与引擎候选，指出更好的打法及其代价，教学口吻）；\n\
-     3. recommended：从该巡候选中选一条最优路线。\n\
+     3. recommended：从该巡候选中选一条最优路线；\n\
+     4. 若该巡给出 Bot参照（离线 bot 复算的首选与概率），在讲解中对比学员实际选择与 bot 首选\
+     （一致时点明共识，分歧时解释 bot 的取舍），并可用各巡牌河信息辅助判断攻防与安全牌。\n\
      规则背景：立直麻将（日本麻将）。手牌13张、每巡摸1切1，和了形=4面子1雀头（七对/国士例外）；\
      门清听牌可立直（供托1000点）；切牌点炮=铳。记号：5mr/5pr/5sr=红宝牌；ESWN=风牌、PFC=三元牌。\
      术语：向听=距听牌还差的有效切牌数；进张/待牌=能推进听牌的摸牌；现物=某家牌河出现过的牌，对该家安全；\
@@ -194,6 +196,20 @@ pub(crate) fn render_turn(turn: &crate::tutorial::material::TurnMaterial) -> Str
             fmt_opt(cand.numbers.avg_score),
         ));
     }
+    // Review-only: what the offline bot replay would have done (live
+    // materials carry the bot's live probabilities in `p=` instead).
+    if let Some(bot) = &turn.bot {
+        let picks = bot
+            .picks
+            .iter()
+            .map(|p| format!("{} {:.1}%", p.tile, p.prob * 100.0))
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!(
+            "Bot参照: 首选{}；bot概率: {}\n",
+            bot.action, picks
+        ));
+    }
     out
 }
 
@@ -268,6 +284,25 @@ mod tests {
                     ],
                     melds: vec![vec![], vec!["789s".into()], vec![], vec![]],
                 }),
+                bot: Some(crate::tutorial::material::BotRefTurn {
+                    junme: 6,
+                    action: "dahai:8m".into(),
+                    picks: vec![
+                        crate::tutorial::material::BotRefPick {
+                            tile: "8m".into(),
+                            label: "Discard".into(),
+                            prob: 0.55,
+                            chosen: true,
+                        },
+                        crate::tutorial::material::BotRefPick {
+                            tile: "5s".into(),
+                            label: "Discard".into(),
+                            prob: 0.31,
+                            chosen: false,
+                        },
+                    ],
+                    source: None,
+                }),
             }],
         }
     }
@@ -320,8 +355,12 @@ mod tests {
         assert!(user.contains("座位3[2s F F]"));
         // Only seats with open melds get a line entry.
         assert!(user.contains("各家副露: 座位1[789s]"));
+        // The bot reference renders for the review narrator (你 vs bot).
+        assert!(user.contains("Bot参照: 首选dahai:8m"));
+        assert!(user.contains("8m 55.0%, 5s 31.0%"));
         // The rule anchor rides in the system prompt.
         assert!(msgs[0].content.contains("规则背景"));
         assert!(msgs[0].content.contains("现物"));
+        assert!(msgs[0].content.contains("Bot参照"));
     }
 }
