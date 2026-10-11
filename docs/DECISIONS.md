@@ -5,6 +5,16 @@
 
 ---
 
+## D-0017 · 对局时顺带记录 bot 应答（botlive），复盘区分「对局 bot」与「复盘 bot」
+
+- **背景**：仓库主人 2026-10-11 指出：复盘页的 bot 参照是复盘时用**当前配置的** bot 重放的，与**对局当时实际在打**的 bot 可能不同（换 bot、换权重、换温度），混为一谈会误导教学；要求对局过程中直接把 bot 的每次应答（动作 + meta.show 候选分布）记录下来，复盘时两种参照并存且明确区分。
+- **决定**：
+  1. **记录点 = `tutorial::live::drive_loop` 的决策窗口**（bot 应答落在 `build_live_turn` 成功处）：此刻 session_key / junme / 分类三要素齐备，用 `bot::replay::classify_reaction`（bot 公开 API，AGENTS §6.4 允许）把应答转成 `BotRefTurn` 追加进会话缓冲；`StartGame` 开新会话（记录 bot 名：按 `num_players` 读当时配置的 active bot），`EndGame`/下一个 `StartGame` 落盘 `botlive/<session_key>.json`（`LiveBotDoc`，含 seat 与 RFC3339 `started_at`）。纯本地数据，与 botref 同类，无 LLM、无 consent 门。
+  2. **复盘匹配**：`tutorial_get_live_bot(game_id)` 读 history 记录的 `(our_seat, started_at..ended_at)`，在 botlive 目录里找 seat 相等且 `started_at` 落入 `[record.started_at−60s, record.ended_at+60s]` 的所有会话（断线重连/页面重载会把一局拆成多个 live 会话），按 junme 合并、后开始的会话覆盖同 junme——重连的 restore 重放会把 junme 快进回真实值，覆盖即对齐。产出复用 `BotRefDoc` 形状（`bot` = 最后会话的 bot 名），前端零新类型。
+  3. **复盘 UI 双源**：候选图表在复盘 bot（紫色，现状）之外并排渲染对局 bot（青色）的置信度与「对局实选/首选」徽标；两个来源都有时概率标签加「对局/复盘」前缀，只有单一来源时保持现状文案。表头标注两边的 bot 名。
+- **理由**：对局应答本来就在 `BotResponseBus` 上流过，不记录是纯浪费；「当时怎么打的」和「现在会怎么打」对照正是复盘教学的核心问题之一；复用 `BotRefTurn`/`classify_reaction` 让两套数据可直接对比。
+- **代价**：每局多一个 ~10-40KB 的本地 JSON（无清理，量级可忽略）；live 会话与 history 记录靠时间窗匹配而非强外键（两边都在同一进程内对同一个 `StartGame` 盖时间戳，误差毫秒级，60s 容差绰绰有余）；极端时钟漂移下匹配失败 = 复盘退回无对局参照，不损数据。
+
 ## D-0016 · 对局中自动讲解：摸牌时抢先生成 + 串行 worker + TutorialLiveBus 推送
 
 - **背景**：M2 深讲层现状是纯手动（点「详细讲解」才调 LLM，等待 3-8 秒）。仓库主人 2026-10-11 要求对局中自动 AI 分析，并在三个触发方案中明确选择**「摸牌时抢先」**——摸牌瞬间（bot 响应到达、切牌窗口打开）即后台生成，讲解赶在切牌决策前出现。这收窄了 live-coach.md §8「不自动逐巡调 LLM（D-0008）」与「不新增 event_bus 通道」两条旧非目标。
