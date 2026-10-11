@@ -32,6 +32,10 @@ async fn main() {
     let mut inspect: Option<u32> = None;
     let mut botref = false;
     let mut dump = false;
+    let mut live_sim = false;
+    let mut fake = false;
+    let mut no_consent = false;
+    let mut limit: Option<usize> = None;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -47,6 +51,15 @@ async fn main() {
             "--refresh" => refresh = true,
             "--botref" => botref = true,
             "--dump" => dump = true,
+            "--live-sim" => live_sim = true,
+            "--fake" => fake = true,
+            "--no-consent" => no_consent = true,
+            "--limit" => {
+                limit = match args.next().map(|v| v.parse::<usize>()) {
+                    Some(Ok(n)) if n > 0 => Some(n),
+                    _ => usage("--limit needs a positive number"),
+                }
+            }
             "--json" => json = true,
             "--inspect" => {
                 inspect = match args.next().map(|v| v.parse::<u32>()) {
@@ -151,6 +164,18 @@ async fn main() {
             result.best_defence_discard,
             result.mixed_risk.len()
         );
+        return;
+    }
+
+    // --live-sim: replay the recorded game through the live-coach path
+    // (single-pass tracker replay → build_live_turn → auto worker), the
+    // same code the app runs when [tutorial.coach] auto_policy = "all".
+    // `--fake` swaps in a scripted provider (fully offline);
+    // `--no-consent` proves the outbound gate blocks; the session key is
+    // derived from the game id, so a second run hits the disk cache and
+    // must make zero provider calls.
+    if live_sim {
+        live_sim_run(&cfg, &events, seat, &record.id, fake, no_consent, limit).await;
         return;
     }
 
@@ -279,9 +304,262 @@ async fn main() {
 fn usage(msg: &str) -> ! {
     eprintln!("{msg}");
     eprintln!(
-        "usage: tutorial-debug [--game <ulid|latest>] [--coverage key|all] [--refresh] [--json] [--inspect <junme>] [--botref] [--dump]"
+        "usage: tutorial-debug [--game <ulid|latest>] [--coverage key|all] [--refresh] [--json] [--inspect <junme>] [--botref] [--dump]\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20\x20live-sim: [--live-sim [--fake] [--no-consent] [--limit N]]"
     );
     std::process::exit(2)
+}
+
+// ---------- --live-sim: auto live-turn pipeline smoke ----------
+
+/// Scripted offline provider for `--fake`.
+struct SimFakeProvider;
+
+#[async_trait::async_trait]
+impl akagi::tutorial::provider::TutorialProvider for SimFakeProvider {
+    fn name(&self) -> &'static str {
+        "sim-fake"
+    }
+
+    async fn complete(
+        &self,
+        _req: akagi::tutorial::provider::ChatRequest,
+    ) -> anyhow::Result<akagi::tutorial::provider::ChatResponse> {
+        Ok(akagi::tutorial::provider::ChatResponse {
+            content: serde_json::json!({
+                "junme": 0,
+                "recommended": "dahai:E",
+                "numbers": {},
+                "explanation_zh": "模拟讲解：先切孤张字牌，保留两面搭子推进一向听。",
+                "headline": "模拟巡讲解",
+            })
+            .to_string(),
+            model: Some("sim-fake".into()),
+            usage: None,
+        })
+    }
+}
+
+/// Wraps a provider and records every outbound attempt (count + elapsed),
+/// so the sim can prove "second run = 0 network calls".
+struct CountingProvider {
+    inner: std::sync::Arc<dyn akagi::tutorial::provider::TutorialProvider>,
+    calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    elapsed_ms: std::sync::Arc<std::sync::Mutex<Vec<u128>>>,
+}
+
+#[async_trait::async_trait]
+impl akagi::tutorial::provider::TutorialProvider for CountingProvider {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    async fn complete(
+        &self,
+        req: akagi::tutorial::provider::ChatRequest,
+    ) -> anyhow::Result<akagi::tutorial::provider::ChatResponse> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let t0 = std::time::Instant::now();
+        let resp = self.inner.complete(req).await?;
+        self.elapsed_ms
+            .lock()
+            .unwrap()
+            .push(t0.elapsed().as_millis());
+        Ok(resp)
+    }
+}
+
+async fn live_sim_run(
+    cfg: &akagi::config::AppConfig,
+    events: &[akagi::schema::MjaiEvent],
+    seat: u8,
+    game_id: &str,
+    fake: bool,
+    no_consent: bool,
+    limit: Option<usize>,
+) {
+    use akagi::game_state::tracker::GameTracker;
+    use akagi::schema::MjaiEvent;
+    use akagi::tutorial::live::{auto_explain_worker, AutoJob};
+    use akagi::tutorial::provider::TutorialProvider;
+
+    // The sim always runs the "policy on" scenario (that is the feature
+    // under test); consent/endpoint are togglable to prove the gates.
+    let mut sim_cfg = cfg.clone();
+    sim_cfg.tutorial.enabled = true;
+    sim_cfg.tutorial.upload_consent = !no_consent;
+    sim_cfg.tutorial.coach.auto_policy = akagi::config::AutoPolicy::All;
+    if fake {
+        // The fake factory never contacts anything, but the gates still
+        // require a "configured" endpoint — stamp sim credentials so the
+        // --fake run exercises the full queue→worker→save→event path
+        // offline regardless of what config.toml holds.
+        sim_cfg.tutorial.llm.base_url = "http://127.0.0.1:9/v1".into();
+        sim_cfg.tutorial.llm.api_key = "sim".into();
+        sim_cfg.tutorial.llm.model = "sim-fake".into();
+    }
+
+    // Single-pass replay: feed the tracker (with StartGame seat
+    // injection, same as scan_decisions) and build the LIVE material at
+    // every own-draw decision point via the production entry point.
+    let session_key = format!("sim-{game_id}");
+    let mut tracker = GameTracker::new();
+    let mut our_draws = 0u32;
+    let mut jobs: Vec<AutoJob> = Vec::new();
+    for ev in events {
+        let ev = match ev {
+            MjaiEvent::StartGame { id, .. } if id.is_none() => {
+                let mut patched = ev.clone();
+                if let MjaiEvent::StartGame { id, .. } = &mut patched {
+                    *id = Some(seat);
+                }
+                patched
+            }
+            other => other.clone(),
+        };
+        if let MjaiEvent::Tsumo { actor, .. } = &ev {
+            if *actor == seat {
+                our_draws += 1;
+            }
+        }
+        if let Err(e) = tracker.handle(&ev) {
+            eprintln!("# tracker stopped at this event: {e:#} — stopping replay");
+            break;
+        }
+        let is_our_draw = matches!(&ev, MjaiEvent::Tsumo { actor, .. } if *actor == seat);
+        if !is_our_draw {
+            continue;
+        }
+        let Some(snap) = tracker.snapshot() else {
+            continue;
+        };
+        // Synthetic bot answer: tsumogiri of the drawn tile, no show card
+        // → build_live_turn falls back to engine-top candidates.
+        let drawn = snap.players[seat as usize]
+            .drawn_tile
+            .clone()
+            .or_else(|| snap.players[seat as usize].tehai.last().cloned())
+            .unwrap_or_default();
+        let resp = akagi::bot::BotResponse {
+            action: MjaiEvent::Dahai {
+                actor: seat,
+                pai: drawn,
+                tsumogiri: true,
+            },
+            meta: None,
+        };
+        if let Some(material) = akagi::tutorial::live::build_live_turn(&snap, &resp, our_draws) {
+            jobs.push(AutoJob {
+                session_key: session_key.clone(),
+                material,
+            });
+        }
+    }
+    let total_points = jobs.len();
+    if let Some(n) = limit {
+        jobs.truncate(n);
+    }
+    println!(
+        "# live-sim {} — {} decision points, {} queued, session {}, provider {}",
+        game_id,
+        total_points,
+        jobs.len(),
+        session_key,
+        if fake { "fake" } else { "real" },
+    );
+    println!(
+        "# gates: policy=all consent={} endpoint_configured={}",
+        sim_cfg.tutorial.upload_consent,
+        sim_cfg.tutorial.llm.is_configured(),
+    );
+
+    let ctx = std::sync::Arc::new(
+        akagi::tutorial::TutorialContext::new(
+            resolve_dir(std::path::Path::new("./tutorial")),
+            akagi::tutorial::LiveCoachHandle::default(),
+        )
+        .expect("tutorial context"),
+    );
+    let (bus, _keeper) = tokio::sync::broadcast::channel(1024);
+    let mut sub = bus.subscribe();
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let elapsed_ms = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let factory_calls = calls.clone();
+    let factory_elapsed = elapsed_ms.clone();
+    let factory = move |llm: &akagi::config::LlmConfig| -> anyhow::Result<
+        std::sync::Arc<dyn akagi::tutorial::provider::TutorialProvider>,
+    > {
+        let inner: std::sync::Arc<dyn TutorialProvider> = if fake {
+            std::sync::Arc::new(SimFakeProvider)
+        } else {
+            std::sync::Arc::new(akagi::tutorial::OpenAiCompatProvider::new(llm)?)
+        };
+        Ok(std::sync::Arc::new(CountingProvider {
+            inner,
+            calls: factory_calls.clone(),
+            elapsed_ms: factory_elapsed.clone(),
+        }))
+    };
+
+    let started = std::time::Instant::now();
+    let queued = jobs.len();
+    let (tx, rx) = tokio::sync::mpsc::channel(4);
+    let worker = tokio::spawn(auto_explain_worker(
+        rx,
+        ctx.clone(),
+        std::sync::Arc::new(tokio::sync::RwLock::new(sim_cfg)),
+        bus.clone(),
+        factory,
+    ));
+    for j in jobs {
+        let _ = tx.send(j).await;
+    }
+    drop(tx);
+    worker.await.expect("worker join");
+
+    let mut events_out = Vec::new();
+    while let Ok(ev) = sub.try_recv() {
+        events_out.push(ev);
+    }
+    let provider_calls = calls.load(std::sync::atomic::Ordering::SeqCst);
+    let fresh = provider_calls.min(events_out.len());
+    let cache_hits = events_out.len() - fresh;
+    println!("# --- summary ---");
+    println!(
+        "# queued {} → events {}, provider calls {}, approx cache hits {}, total {:?}",
+        queued,
+        events_out.len(),
+        provider_calls,
+        cache_hits,
+        started.elapsed(),
+    );
+    if !elapsed_ms.lock().unwrap().is_empty() {
+        let list = elapsed_ms.lock().unwrap().clone();
+        let min = list.iter().min().unwrap();
+        let max = list.iter().max().unwrap();
+        let avg = list.iter().sum::<u128>() / list.len() as u128;
+        println!(
+            "# per-call latency: min {min} ms · avg {avg} ms · max {max} ms (n={})",
+            list.len()
+        );
+    }
+    for ev in events_out.iter().take(8) {
+        println!(
+            "  junme {:>2} [{}] {}",
+            ev.junme,
+            ev.model.as_deref().unwrap_or("?"),
+            ev.doc
+                .headline
+                .as_deref()
+                .unwrap_or(&ev.doc.explanation_zh)
+                .chars()
+                .take(40)
+                .collect::<String>()
+        );
+    }
+    if events_out.len() > 8 {
+        println!("  … {} more", events_out.len() - 8);
+    }
 }
 
 // ---------- --dump: prompt / reply viewer (self-contained HTML) ----------

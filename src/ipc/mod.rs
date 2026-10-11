@@ -35,6 +35,7 @@
 //! | `analysis-result`  | `analysis::AnalysisResult`    |
 //! | `history-recorded` | `schema::HistoryEvent`        |
 //! | `overlay-config`   | `config::OverlayConfig`       |
+//! | `tutorial-live-turn` | `tutorial::material::TutorialLiveEvent` |
 //!
 //! All of the above are broadcast to every webview, which is what lets the
 //! [`overlay`] window render suggestions without any dedicated plumbing.
@@ -78,6 +79,12 @@ fn spawn_forwarders<R: Runtime>(app: AppHandle<R>, state: AppState) {
         app.clone(),
         state.history_bus.subscribe(),
         "history-recorded",
+    );
+    // Fork-only (D-0014): auto-generated live-turn deep-dives.
+    forward(
+        app.clone(),
+        state.tutorial_live_bus.subscribe(),
+        "tutorial-live-turn",
     );
 
     // Status buses: forward AND snapshot into AppState.

@@ -26,7 +26,6 @@ use crate::schema::{
 };
 use crate::tutorial::assemble::{ReplayOutline, ReplayStep};
 use crate::tutorial::material::{ReviewCoverage, ReviewDoc, TurnDoc};
-use crate::tutorial::TutorialProvider;
 use crate::util::resolve_dir;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -1523,10 +1522,10 @@ pub async fn tutorial_delete_review(
 
 /// Deep-dive explanation of the *current* live decision (the in-game
 /// coach tile's button, D-0008). Cache-first per `session_key + junme`;
-/// consent-gated; numbers cross-checked against the locally re-derived
-/// material before the reply is returned. Errors are user-readable
-/// ("no live decision point", consent hint, provider failure) — the
-/// template layer keeps working regardless.
+/// consent-gated; shared with the D-0014 auto worker through
+/// [`crate::tutorial::pipeline::generate_live_turn`]. Errors are
+/// user-readable ("no live decision point", consent hint, provider
+/// failure) — the template layer keeps working regardless.
 #[tauri::command]
 pub async fn tutorial_explain_live(state: State<'_, AppState>) -> CmdResult<TurnDoc> {
     let Some(turn) = state.tutorial.live.current() else {
@@ -1556,32 +1555,12 @@ pub async fn tutorial_explain_live(state: State<'_, AppState>) -> CmdResult<Turn
 
     let provider = crate::tutorial::OpenAiCompatProvider::new(&cfg.llm)
         .map_err(|e| format!("failed to build the tutorial LLM provider: {e:#}"))?;
-    let resp = provider
-        .complete(crate::tutorial::ChatRequest {
-            messages: crate::tutorial::build_turn_messages(&turn.material),
-            temperature: Some(0.2),
-            // Headroom for reasoning models: thinking comes out of the same
-            // budget before the JSON body (see pipeline.rs).
-            max_tokens: Some(6000),
-            reasoning_effort: cfg.llm.reasoning_effort.clone(),
-        })
-        .await
-        .map_err(|e| format!("LLM request failed: {e:#}"))?;
-    let doc = crate::tutorial::download::parse_turn_doc_trust(&resp.content, &turn.material)
-        .map_err(|e| format!("LLM reply was not keepable JSON: {e:#}"))?;
-
-    let live_doc = crate::tutorial::LiveTurnDoc {
-        key,
-        doc: doc.clone(),
-        model: resp.model,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
     let ctx = state.tutorial.clone();
-    tokio::task::spawn_blocking(move || ctx.store.save_turn_doc(&live_doc))
-        .await
-        .map_err(|e| format!("tutorial live save join error: {e}"))?
-        .map_err(|e| format!("{e:#}"))?;
-    Ok(doc)
+    let live_doc =
+        crate::tutorial::pipeline::generate_live_turn(&ctx.store, &provider, &turn.material, &key)
+            .await
+            .map_err(|e| format!("{e:#}"))?;
+    Ok(live_doc.doc)
 }
 
 /// Bot reference for a replayed game: what the configured subprocess

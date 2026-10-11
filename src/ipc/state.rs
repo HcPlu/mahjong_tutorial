@@ -21,7 +21,7 @@ use crate::bot::PythonRuntime;
 use crate::config::AppConfig;
 use crate::event_bus::{
     AnalysisBus, BotResponseBus, BotStatusBus, CaptureStatusBus, HistoryBus, MjaiBus, NotifyBus,
-    PostTrackerBus,
+    PostTrackerBus, TutorialLiveBus,
 };
 use crate::game_state::GameTracker;
 use crate::history::recorder::SharedPlatform;
@@ -94,6 +94,10 @@ pub struct AppState {
     /// Tutorial (AI coaching) state: the review-cache store and the live
     /// coach cell. Fork-only; see `src/tutorial/`.
     pub tutorial: Arc<TutorialContext>,
+    /// Auto-generated live-turn explanations (fork-only, D-0014):
+    /// producer side lives in `tutorial::live::auto_explain_worker`,
+    /// forwarded to the frontend as `tutorial-live-turn`.
+    pub tutorial_live_bus: TutorialLiveBus,
     /// Shared cell holding the platform tag the history recorder stamps
     /// onto each finalised game. `update_config` updates this when the
     /// user switches bridges so subsequent records pick up the new tag
@@ -155,6 +159,7 @@ impl AppState {
         analysis_cache: AnalysisCache,
         history_store: Arc<HistoryStore>,
         tutorial: Arc<TutorialContext>,
+        tutorial_live_bus: TutorialLiveBus,
         history_platform: SharedPlatform,
         runtime: Option<PythonRuntime>,
     ) -> Self {
@@ -176,6 +181,7 @@ impl AppState {
             analysis_cache,
             history_store,
             tutorial,
+            tutorial_live_bus,
             history_platform,
             runtime,
             syncs_in_flight: Arc::new(Mutex::new(HashSet::new())),

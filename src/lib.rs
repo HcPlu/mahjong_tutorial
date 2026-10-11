@@ -91,6 +91,7 @@ pub fn run() {
     let analysis_bus = event_bus::analysis_bus();
     let post_tracker_bus = event_bus::post_tracker_bus();
     let history_bus = event_bus::history_bus();
+    let tutorial_live_bus = event_bus::tutorial_live_bus();
 
     // Persistent game-history store. Lives under `<config_root>/history/`
     // by default — independent of the volatile session log dir. Failure
@@ -207,6 +208,7 @@ pub fn run() {
                     analysis_cache,
                     history_store.clone(),
                     tutorial.clone(),
+                    tutorial_live_bus.clone(),
                     history_platform.clone(),
                     runtime.clone(),
                 );
@@ -257,11 +259,34 @@ pub fn run() {
                     analysis_cache_for_runner,
                 ));
 
+                // Live coach (D-0008/D-0014): the drive loop keeps the
+                // single-slot material fresh; while auto_policy is on it
+                // also feeds the serial generation worker, whose results
+                // fan out on the TutorialLiveBus (forwarded to the
+                // frontend as `tutorial-live-turn`).
+                let (live_auto_tx, live_auto_rx) =
+                    tokio::sync::mpsc::channel::<tutorial::live::AutoJob>(4);
+                let live_config_for_loop = state.config.clone();
                 tauri::async_runtime::spawn(tutorial::live::drive_loop(
                     live_post_rx,
                     live_bot_rx,
                     live_tracker,
                     live_coach_for_loop,
+                    live_config_for_loop,
+                    live_auto_tx,
+                ));
+                let worker_config = state.config.clone();
+                let worker_ctx = state.tutorial.clone();
+                let worker_bus = state.tutorial_live_bus.clone();
+                tauri::async_runtime::spawn(tutorial::live::auto_explain_worker(
+                    live_auto_rx,
+                    worker_ctx,
+                    worker_config,
+                    worker_bus,
+                    |llm| {
+                        Ok(std::sync::Arc::new(tutorial::OpenAiCompatProvider::new(llm)?)
+                            as std::sync::Arc<dyn tutorial::TutorialProvider>)
+                    },
                 ));
 
                 // History recorder. Subscribes to the shared MjaiBus and
