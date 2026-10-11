@@ -145,8 +145,10 @@ pub(crate) fn render_turn(turn: &crate::tutorial::material::TurnMaterial) -> Str
     }
     out.push_str("候选:\n");
     for (i, cand) in turn.candidates.iter().enumerate() {
+        // `prob` is a ranking hint for the model, not a checked number —
+        // four decimals reads cleanly and keeps the prompt short.
         out.push_str(&format!(
-            "  {}. {} (p={}) 向听{} 和率{} 铳率{} 打点{}\n",
+            "  {}. {} (p={:.4}) 向听{} 和率{} 铳率{} 打点{}\n",
             i + 1,
             cand.label,
             cand.prob,
@@ -261,6 +263,8 @@ mod tests {
         assert!(!user.contains("HcPlu"));
         // Numbers round-trip-render (0.42 not 0.42000...).
         assert!(user.contains("和率0.42"));
+        // The ranking hint renders with four fixed decimals.
+        assert!(user.contains("(p=0.4400)"));
         // Situational context rides along (no identity in it either).
         assert!(user.contains("局况:"));
         assert!(user.contains("已立直家[3]"));
