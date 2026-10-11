@@ -84,7 +84,7 @@ The history commands (`list_game_history`, `get_game_history_record`,
 commands (`tutorial_replay_outline`, `tutorial_replay_step`,
 `tutorial_get_review`, `tutorial_generate_review`,
 `tutorial_delete_review`, `tutorial_bot_reference`,
-`tutorial_get_bot_reference`, `tutorial_explain_live`) follow the same shape. The tutorial surface is
+`tutorial_get_bot_reference`, `tutorial_get_live_bot`, `tutorial_explain_live`) follow the same shape. The tutorial surface is
 a thin wrapper over `src/tutorial/` — the consent gate, review cache and
 anti-hallucination number checks live there (see that module's README);
 IPC only shuttles data and never re-implements those rules.

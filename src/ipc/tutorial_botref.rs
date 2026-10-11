@@ -8,13 +8,11 @@
 
 use anyhow::{bail, Context, Result};
 
-use crate::bot::replay::ReplaySource;
 use crate::bot::PythonRuntime;
 use crate::config::AppConfig;
 use crate::event_bus::NotifyBus;
 use crate::history::HistoryStore;
-use crate::schema::MjaiEvent;
-use crate::tutorial::material::{BotRefDoc, BotRefPick, BotRefSource, BotRefTurn};
+use crate::tutorial::material::{BotRefDoc, BotRefTurn};
 use crate::tutorial::store::TutorialStore;
 use crate::util::resolve_dir;
 use std::path::Path;
@@ -80,21 +78,12 @@ pub async fn generate_bot_reference(
         .iter()
         .filter_map(|d| {
             let r = decisions.iter().find(|r| r.event_index == d.event_index)?;
-            Some(BotRefTurn {
-                junme: d.junme,
-                action: action_label(&r.action),
-                picks: r
-                    .picks
-                    .iter()
-                    .map(|p| BotRefPick {
-                        tile: p.tile.clone(),
-                        label: p.label.clone(),
-                        prob: p.prob,
-                        chosen: p.chosen,
-                    })
-                    .collect(),
-                source: Some(map_source(r.source)),
-            })
+            Some(crate::tutorial::botlive::to_botref_turn(
+                d.junme,
+                &r.action,
+                r.source,
+                r.picks.clone(),
+            ))
         })
         .collect();
 
@@ -114,54 +103,7 @@ pub async fn generate_bot_reference(
     Ok(doc)
 }
 
-/// Coarse action label in the same vocabulary as the material's
-/// `CandidateNumbers::label` (`dahai:5s`, `reach`, ...).
-fn action_label(ev: &MjaiEvent) -> String {
-    match ev {
-        MjaiEvent::Dahai { pai, .. } => format!("dahai:{pai}"),
-        MjaiEvent::Reach { .. } => "reach".into(),
-        MjaiEvent::None => "none".into(),
-        other => serde_json::to_value(other)
-            .ok()
-            .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(String::from))
-            .unwrap_or_else(|| "other".into()),
-    }
-}
-
-/// `bot::replay`'s classification → the tutorial-side enum. The two
-/// live on opposite sides of the bot/tutorial boundary and must stay
-/// variant-for-variant in sync (this match has no `_` arm on purpose).
-fn map_source(source: ReplaySource) -> BotRefSource {
-    match source {
-        ReplaySource::Model => BotRefSource::Model,
-        ReplaySource::RuleForced => BotRefSource::RuleForced,
-        ReplaySource::RuleOverridden => BotRefSource::RuleOverridden,
-        ReplaySource::NoAnswer => BotRefSource::NoAnswer,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn action_labels_use_material_vocabulary() {
-        assert_eq!(
-            action_label(&MjaiEvent::Dahai {
-                actor: 0,
-                pai: "5s".into(),
-                tsumogiri: false
-            }),
-            "dahai:5s"
-        );
-        assert_eq!(
-            action_label(&MjaiEvent::Reach {
-                actor: 0,
-                pai: None
-            }),
-            "reach"
-        );
-        assert_eq!(action_label(&MjaiEvent::None), "none");
-        assert_eq!(action_label(&MjaiEvent::EndKyoku), "end_kyoku");
-    }
-}
+// The answer→`BotRefTurn` conversion (action label, `meta.show` picks,
+// source classification) is shared with the live recorder and lives in
+// `tutorial::botlive::to_botref_turn` — the single mapping both sides
+// of the bot/tutorial boundary use.

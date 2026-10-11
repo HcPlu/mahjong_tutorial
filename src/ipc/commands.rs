@@ -1613,6 +1613,33 @@ pub async fn tutorial_get_bot_reference(
         .map_err(|e| format!("{e:#}"))
 }
 
+/// The bot answers recorded **while this game was being played**
+/// (D-0017): what the bot that actually drove/assisted the game chose
+/// at each decision, as opposed to `tutorial_bot_reference`'s
+/// regenerated answer from the currently configured bot. Joins live
+/// sessions to the record by seat + start-time window; `None` when the
+/// game predates recording or nothing matched.
+#[tauri::command]
+pub async fn tutorial_get_live_bot(
+    game_id: String,
+    state: State<'_, AppState>,
+) -> CmdResult<Option<crate::tutorial::material::BotRefDoc>> {
+    let history = state.history_store.clone();
+    let ctx = state.tutorial.clone();
+    tokio::task::spawn_blocking(
+        move || -> anyhow::Result<Option<crate::tutorial::material::BotRefDoc>> {
+            let Some(record) = history.get(&game_id)? else {
+                return Ok(None);
+            };
+            let docs = ctx.store.list_botlive()?;
+            Ok(crate::tutorial::botlive::match_live_bot(&record, docs))
+        },
+    )
+    .await
+    .map_err(|e| format!("tutorial live-bot get join error: {e}"))?
+    .map_err(|e| format!("{e:#}"))
+}
+
 /// `shinkuan/Akagi` is the canonical upstream — kept here as a const
 /// instead of plumbing through config so the user can't accidentally
 /// point the auto-updater at a fork.
@@ -2087,6 +2114,7 @@ macro_rules! ipc_handlers {
             $crate::ipc::commands::tutorial_explain_live,
             $crate::ipc::commands::tutorial_bot_reference,
             $crate::ipc::commands::tutorial_get_bot_reference,
+            $crate::ipc::commands::tutorial_get_live_bot,
         ]
     };
 }
