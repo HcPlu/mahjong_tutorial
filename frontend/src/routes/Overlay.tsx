@@ -200,13 +200,24 @@ export function Overlay() {
           </button>
         </header>
 
+        {/* min-h-0 is what gives this a definite height to hand down: without it
+            a flex child refuses to shrink below its content, the rows never get
+            a height to split, and the list collapses to hugging its content. */}
+        <div className="min-h-0 flex-1 overflow-hidden px-1.5 pt-1 pb-1.5">
+          {items.length === 0 ? (
+            <span className="px-1 text-xs text-muted-foreground">{t('overlay.empty')}</span>
+          ) : (
+            <BotShowList items={items} variant="overlay" />
+          )}
+        </div>
+
         {/* Auto-explanation panel (fork, D-0018): the latest LLM deep-dive
-            for the current decision, ABOVE the suggestions — it is the
-            teaching content, the list is the reference. shrink-0 so the
-            list below gives up the height, not the window. */}
+            for the current decision, UNDER the suggestions — the top-N list
+            stays the first thing at a glance. shrink-0 so the list above
+            gives up the height, not the window. */}
         {coachAuto && (
           <div
-            className="shrink-0 border-b border-border px-2 pt-1 pb-1.5"
+            className="shrink-0 border-t border-border px-2 pt-1 pb-1.5"
             data-testid="overlay-explain-panel"
           >
             {autoDoc ? (
@@ -243,17 +254,6 @@ export function Overlay() {
             )}
           </div>
         )}
-
-        {/* min-h-0 is what gives this a definite height to hand down: without it
-            a flex child refuses to shrink below its content, the rows never get
-            a height to split, and the list collapses to hugging its content. */}
-        <div className="min-h-0 flex-1 overflow-hidden px-1.5 pt-1 pb-1.5">
-          {items.length === 0 ? (
-            <span className="px-1 text-xs text-muted-foreground">{t('overlay.empty')}</span>
-          ) : (
-            <BotShowList items={items} variant="overlay" />
-          )}
-        </div>
       </div>
     </div>
   )
