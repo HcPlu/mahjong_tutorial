@@ -470,6 +470,17 @@ pub(crate) fn turn_context(
             .collect(),
         dora_indicators: snap.dora_markers.clone(),
         our_riichi,
+        seat: snap.our_seat.unwrap_or(0),
+        rivers: snap
+            .players
+            .iter()
+            .map(|p| p.river.iter().map(|d| d.tile.clone()).collect())
+            .collect(),
+        melds: snap
+            .players
+            .iter()
+            .map(|p| p.melds.iter().map(|m| m.tiles.join("")).collect::<Vec<_>>())
+            .collect(),
     }
 }
 

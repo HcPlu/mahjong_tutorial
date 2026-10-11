@@ -67,7 +67,11 @@ fn turn_system_prompt() -> String {
      局况与候选切牌。你的职责：解释 bot 首选（实际选择）为什么好——headline 一句话结论（不超过20字）\
      与 explanation_zh（60-120字讲解：取舍逻辑、与其他候选的对比、需要注意的局势）。\
      recommended 填 bot 首选。\n\
-     铁律：numbers 字段的数字必须逐字段原样复制；讲解正文里引用数字时用百分数保留1-2位小数，禁止编造任何不在输入中的数字；不得推荐候选之外的打法。\
+     规则背景：立直麻将（日本麻将）。手牌13张、每巡摸1切1，和了形=4面子1雀头（七对/国士例外）；\
+     门清听牌可立直（供托1000点）；切牌点炮=铳。记号：5mr/5pr/5sr=红宝牌；ESWN=风牌、PFC=三元牌。\
+     术语：向听=距听牌还差的有效切牌数；进张/待牌=能推进听牌的摸牌；现物=某家牌河出现过的牌，对该家安全；\
+     各家牌河按打出顺序列出，可据其判断对手速度与安全牌。讲解面向初中级玩家：关键术语首次出现时顺带半句白话解释。\n\
+     铁律：numbers 字段的数字必须逐字段原样复制；讲解正文里引用数字时用百分数保留1-2位小数，禁止编造任何不在输入中的数字；不得推荐候选之外的打法。\n\
      只输出一个 JSON 对象，不要输出其他文字：\n\
      {\"junme\": <巡号>, \"recommended\": \"<候选label>\", \"numbers\": {\"shanten\": <int>, \
      \"win_rate\": <float|null>, \"deal_in_rate\": <float|null>, \"avg_score\": <int|null>}, \
@@ -86,6 +90,10 @@ fn system_prompt() -> String {
      2. 每巡给出 headline（一句话结论，不超过20字）与 explanation_zh（60-120字讲解：解释关键取舍，\
      对比实际选择与引擎候选，指出更好的打法及其代价，教学口吻）；\n\
      3. recommended：从该巡候选中选一条最优路线。\n\
+     规则背景：立直麻将（日本麻将）。手牌13张、每巡摸1切1，和了形=4面子1雀头（七对/国士例外）；\
+     门清听牌可立直（供托1000点）；切牌点炮=铳。记号：5mr/5pr/5sr=红宝牌；ESWN=风牌、PFC=三元牌。\
+     术语：向听=距听牌还差的有效切牌数；进张/待牌=能推进听牌的摸牌；现物=某家牌河出现过的牌，对该家安全；\
+     各家牌河按打出顺序列出，可据其判断对手速度与安全牌。讲解面向初中级玩家：关键术语首次出现时顺带半句白话解释。\n\
      铁律：numbers 字段的数字必须逐字段原样复制；讲解正文里引用数字时用百分数保留1-2位小数（如0.03624写作3.6%），禁止编造任何不在输入中的数字；不得推荐候选之外的打法。\
      只输出一个 JSON 对象，不要输出其他文字，结构如下：\n\
      {\"overview\": \"<总评>\", \"game_id\": \"<原样>\", \"seat\": <原样>, \"turns\": [{\"junme\": <巡号>, \
@@ -142,6 +150,34 @@ pub(crate) fn render_turn(turn: &crate::tutorial::material::TurnMaterial) -> Str
             ctx.dora_indicators.join(" "),
             if ctx.our_riichi { "是" } else { "否" },
         ));
+        let seat_labels: Vec<String> = (0..ctx.rivers.len())
+            .map(|i| {
+                if i == ctx.seat as usize {
+                    format!("我方(座位{i})")
+                } else {
+                    format!("座位{i}")
+                }
+            })
+            .collect();
+        if !ctx.rivers.is_empty() {
+            let rivers: Vec<String> = ctx
+                .rivers
+                .iter()
+                .zip(&seat_labels)
+                .map(|(river, label)| format!("{label}[{}]", river.join(" ")))
+                .collect();
+            out.push_str(&format!("各家牌河: {}\n", rivers.join(" ")));
+        }
+        let open_melds: Vec<String> = ctx
+            .melds
+            .iter()
+            .zip(&seat_labels)
+            .filter(|(groups, _)| !groups.is_empty())
+            .map(|(groups, label)| format!("{label}[{}]", groups.join(" ")))
+            .collect();
+        if !open_melds.is_empty() {
+            out.push_str(&format!("各家副露: {}\n", open_melds.join(" ")));
+        }
     }
     out.push_str("候选:\n");
     for (i, cand) in turn.candidates.iter().enumerate() {
@@ -223,6 +259,14 @@ mod tests {
                     riichi_seats: vec![3],
                     dora_indicators: vec!["2m".into()],
                     our_riichi: false,
+                    seat: 2,
+                    rivers: vec![
+                        vec!["E".into(), "1m".into()],
+                        vec!["S".into(), "9p".into()],
+                        vec!["W".into()],
+                        vec!["2s".into(), "F".into(), "F".into()],
+                    ],
+                    melds: vec![vec![], vec!["789s".into()], vec![], vec![]],
                 }),
             }],
         }
@@ -268,5 +312,16 @@ mod tests {
         // Situational context rides along (no identity in it either).
         assert!(user.contains("局况:"));
         assert!(user.contains("已立直家[3]"));
+        // Rivers render per seat with the observer labelled 我方, and the
+        // riichi seat's river tiles are visible for 现物 reasoning.
+        assert!(user.contains("各家牌河:"));
+        assert!(user.contains("座位0[E 1m]"));
+        assert!(user.contains("我方(座位2)[W]"));
+        assert!(user.contains("座位3[2s F F]"));
+        // Only seats with open melds get a line entry.
+        assert!(user.contains("各家副露: 座位1[789s]"));
+        // The rule anchor rides in the system prompt.
+        assert!(msgs[0].content.contains("规则背景"));
+        assert!(msgs[0].content.contains("现物"));
     }
 }

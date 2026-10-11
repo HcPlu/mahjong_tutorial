@@ -73,6 +73,17 @@ pub struct TurnContext {
     /// Whether the reviewed seat is in riichi at this decision (declared
     /// this turn or earlier).
     pub our_riichi: bool,
+    /// The observed seat (0..3). Lets the prompt label one river as
+    /// 「我方」 and keep the others as absolute seat numbers, matching
+    /// `riichi_seats`.
+    pub seat: u8,
+    /// Each seat's discard river in order (claim-removed view-only
+    /// entries included — same genbutsu semantics the engine uses).
+    /// Public information: nothing to redact.
+    pub rivers: Vec<Vec<String>>,
+    /// Each seat's open melds, one string per group (e.g. `"PPP"`,
+    /// `"456s"`). Empty groups omitted. Public information.
+    pub melds: Vec<Vec<String>>,
 }
 
 /// One decision point (junme) of the reviewed seat, as handed to the LLM.

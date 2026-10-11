@@ -80,7 +80,11 @@ frontend/src/components/tutorial/commentary/
 
 - `tehai`/`draw`/`junme` ← 快照（tracker 侧装配时直接从快照取，不经前端）；
 - `candidates` ← `meta.show.items`（label + prob）× `AnalysisResult.hand14.maintain` 同名候选的数字，映射为 `EngineNumbers`（`win_rate ← avg_agari_rate`、`deal_in_rate ← mixed_risk[切牌]`、`avg_score ←` 期望点；取不到的字段保持 `None`，download 端核对只约束非空项）；
-- **live 语境下 `actual` 填 bot 首选动作**（被解释对象；M1 复盘语境才是学员的实际选择）。此语义差异写进 `material.rs` 字段注释。
+- **live 语境下 `actual` 填 bot 首选动作**（被解释对象；M1 复盘语境才是学员的实际选择）。此语义差异写进 `material.rs` 字段注释；
+- `context` 除局况（风局/分数/立直家/宝牌）外还带**各家牌河与副露**（公开信息，渲染成
+  `各家牌河: 我方(座位0)[…] 座位1[…] …`，供 LLM 做现物/对手速度推理）；system prompt 带
+  一段紧凑的**规则/术语锚定**（立直麻将基本形、记号、向听/现物等术语），不塞完整规则书
+  ——数字已由引擎算好，锚定只为叙述一致性，避免每巡多付上千 token。
 
 ### 4.2 调用链（固定顺序，失败即降级、不重试）
 
