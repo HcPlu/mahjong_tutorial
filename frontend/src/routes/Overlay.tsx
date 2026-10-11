@@ -232,16 +232,16 @@ export function Overlay() {
           >
             {autoDoc ? (
               <div data-testid="overlay-explain-doc">
-                <p className="flex items-center gap-1 text-[10px] font-semibold text-violet-400">
-                  <Sparkles className="size-3 shrink-0" />
+                <p className="flex items-center gap-1 text-[11px] font-semibold text-violet-400">
+                  <Sparkles className="size-3.5 shrink-0" />
                   {t('overlay.explain_turn', { junme: autoDoc.junme })}
                 </p>
                 {autoDoc.headline && (
-                  <p className="text-[12px] font-semibold leading-snug text-foreground">
+                  <p className="text-sm font-semibold leading-snug text-foreground">
                     {tileNamesZh(autoDoc.headline)}
                   </p>
                 )}
-                <p className="line-clamp-4 text-[11px] leading-snug text-foreground/80">
+                <p className="line-clamp-4 text-[13px] leading-snug text-foreground/85">
                   {tileNamesZh(autoDoc.explanation_zh)}
                 </p>
               </div>
@@ -251,16 +251,16 @@ export function Overlay() {
               autoPending &&
               canOutbound && (
                 <p
-                  className="flex items-center gap-1.5 text-[11px] font-medium text-violet-400"
+                  className="flex items-center gap-1.5 text-xs font-medium text-violet-400"
                   data-testid="overlay-explain-pending"
                 >
-                  <Loader2 className="size-3 animate-spin" />
+                  <Loader2 className="size-3.5 animate-spin" />
                   {t('overlay.explain_pending')}
                 </p>
               )
             )}
             {!canOutbound && (
-              <p className="text-[10px] leading-snug text-muted-foreground">
+              <p className="text-[11px] leading-snug text-muted-foreground">
                 {t('overlay.explain_unconfigured')}
               </p>
             )}

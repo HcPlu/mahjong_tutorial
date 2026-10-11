@@ -57,12 +57,13 @@ const MIN_ROW_HEIGHT: f64 = 34.0;
 /// Roomy enough that the tile is worth glancing at without leaning in.
 const DEFAULT_ROW_HEIGHT: f64 = 62.0;
 
-// The fork's explanation panel (D-0018) renders above the suggestion list
+// The fork's explanation panel (D-0018) renders under the suggestion list
 // while in-game auto explanations are on. Both the starting height and the
 // floor reserve room for it so it never crushes the rows; with the panel
-// off the math is exactly the pre-panel size.
-const EXPLAIN_PANEL_DEFAULT_HEIGHT: f64 = 118.0;
-const EXPLAIN_PANEL_MIN_HEIGHT: f64 = 80.0;
+// off the math is exactly the pre-panel size. Sized for the 13-14px
+// explanation text — legibility over density (user call, 2026-10-11).
+const EXPLAIN_PANEL_DEFAULT_HEIGHT: f64 = 136.0;
+const EXPLAIN_PANEL_MIN_HEIGHT: f64 = 94.0;
 
 fn default_height(top_n: usize, explain_panel: bool) -> f64 {
     CHROME_HEIGHT
