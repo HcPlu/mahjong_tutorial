@@ -286,6 +286,24 @@ fn usage(msg: &str) -> ! {
 
 // ---------- --dump: prompt / reply viewer (self-contained HTML) ----------
 
+/// One turn of the reply, decomposed from JSON and paired with the
+/// material's numbers for the same candidate (viewer-side comparison).
+struct DumpTurn {
+    junme: u32,
+    recommended: String,
+    numbers: akagi::tutorial::material::EngineNumbers,
+    headline: Option<String>,
+    explanation: String,
+    /// The material candidate matching `recommended`, when one exists.
+    material_numbers: Option<akagi::tutorial::material::EngineNumbers>,
+}
+
+impl DumpTurn {
+    fn matches_material(&self) -> Option<bool> {
+        self.material_numbers.as_ref().map(|m| *m == self.numbers)
+    }
+}
+
 struct DumpChunk {
     system: String,
     user: String,
@@ -297,6 +315,10 @@ struct DumpChunk {
     /// the pipeline itself is trust-passthrough (D-0013).
     strict_rejected: Vec<String>,
     strict_kept: usize,
+    /// JSON-decomposed turns (empty when the reply wasn't keepable JSON).
+    overview: Option<String>,
+    turns: Vec<DumpTurn>,
+    parse_error: Option<String>,
 }
 
 async fn dump_game(
@@ -346,6 +368,36 @@ async fn dump_game(
                 Ok((doc, rej)) => (doc.turns.len(), rej),
                 Err(e) => (0, vec![format!("parse failed outright: {e:#}")]),
             };
+        // JSON decomposition for the viewer: keep the reply verbatim,
+        // pair each turn's numbers with the material candidate's.
+        let (overview, turns, parse_error) =
+            match akagi::tutorial::download::parse_review_doc_trust(&resp.content, &sub) {
+                Ok(doc) => {
+                    let turns = doc
+                        .turns
+                        .iter()
+                        .map(|t| {
+                            let material_numbers =
+                                sub.turns.iter().find(|m| m.junme == t.junme).and_then(|m| {
+                                    m.candidates
+                                        .iter()
+                                        .find(|c| c.label == t.recommended)
+                                        .map(|c| c.numbers.clone())
+                                });
+                            DumpTurn {
+                                junme: t.junme,
+                                recommended: t.recommended.clone(),
+                                numbers: t.numbers.clone(),
+                                headline: t.headline.clone(),
+                                explanation: t.explanation_zh.clone(),
+                                material_numbers,
+                            }
+                        })
+                        .collect();
+                    (doc.overview.clone(), turns, None)
+                }
+                Err(e) => (None, Vec::new(), Some(format!("{e:#}"))),
+            };
         chunks.push(DumpChunk {
             system: msgs[0].content.clone(),
             user: msgs[1].content.clone(),
@@ -355,6 +407,9 @@ async fn dump_game(
             elapsed_ms,
             strict_rejected,
             strict_kept,
+            overview,
+            turns,
+            parse_error,
         });
     }
 
@@ -388,6 +443,22 @@ async fn dump_game(
         .args(["/C", "start", "", &view.display().to_string()])
         .spawn()
         .ok();
+}
+
+fn fmt_numbers(n: &akagi::tutorial::material::EngineNumbers) -> String {
+    let pct = |v: Option<f64>| match v {
+        Some(v) => format!("{:.1}%", v * 100.0),
+        None => "—".into(),
+    };
+    format!(
+        "向听{} · 和率{} · 铳率{} · 打点{}",
+        n.shanten,
+        pct(n.win_rate),
+        pct(n.deal_in_rate),
+        n.avg_score
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "—".into())
+    )
 }
 
 fn esc(s: &str) -> String {
@@ -462,6 +533,45 @@ fn render_dump_html(
         h.push_str("</pre></div><div><h2>LLM 原始输出（未做任何删改）</h2><pre>");
         h.push_str(&esc(&c.raw_reply));
         h.push_str("</pre></div></div>");
+        // JSON 分解：把回显解析成 总评 + 逐巡表格，并与原料数字并排对照。
+        h.push_str("<h2>JSON 分解（回显解析 + 与原料对照）</h2>");
+        if let Some(err) = &c.parse_error {
+            h.push_str(&format!(
+                "<p class=\"bad\">回显无法解析为 JSON：<code>{}</code></p>",
+                esc(err)
+            ));
+        } else {
+            if let Some(ov) = &c.overview {
+                h.push_str(&format!("<p><b>总评：</b>{}</p>", esc(ov)));
+            }
+            h.push_str("<table><tr><th>巡</th><th>recommended</th><th>回显数字</th><th>原料数字</th><th>核对</th><th>headline</th><th>讲解</th></tr>");
+            for t in &c.turns {
+                let verdict = match t.matches_material() {
+                    Some(true) => "<span class=\"ok\">一致</span>".to_string(),
+                    Some(false) => "<span class=\"bad\">不一致</span>".to_string(),
+                    None => "<span class=\"warn\">候选外</span>".to_string(),
+                };
+                let cell_class = match t.matches_material() {
+                    Some(true) => "",
+                    _ => " class=\"bad\"",
+                };
+                h.push_str(&format!(
+                    "<tr><td>{}</td><td><code>{}</code></td>{}<td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                    t.junme,
+                    esc(&t.recommended),
+                    format_args!("<td{}>{}</td>", cell_class, esc(&fmt_numbers(&t.numbers))),
+                    esc(&t
+                        .material_numbers
+                        .as_ref()
+                        .map(fmt_numbers)
+                        .unwrap_or_else(|| "—".into())),
+                    verdict,
+                    esc(t.headline.as_deref().unwrap_or("")),
+                    esc(&t.explanation),
+                ));
+            }
+            h.push_str("</table>");
+        }
         if !c.strict_rejected.is_empty() {
             h.push_str("<h2>诊断 · 若按严格核对会拒绝的巡</h2><ul>");
             for r in &c.strict_rejected {
