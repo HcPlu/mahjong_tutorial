@@ -336,7 +336,12 @@ fn usage(msg: &str) -> ! {
 
 // ---------- --live-sim: auto live-turn pipeline smoke ----------
 
-/// Scripted offline provider for `--fake`.
+/// Scripted offline provider for `--fake`. The reply is shaped after
+/// the prompt it was given (review array vs single turn) so the dump
+/// viewer's JSON decomposition fills in like a real run: junme, the
+/// first candidate's label and its numbers are echoed **verbatim from
+/// the user prompt text**, which is exactly what the strict diagnostic
+/// wants to see.
 struct SimFakeProvider;
 
 #[async_trait::async_trait]
@@ -347,21 +352,102 @@ impl akagi::tutorial::provider::TutorialProvider for SimFakeProvider {
 
     async fn complete(
         &self,
-        _req: akagi::tutorial::provider::ChatRequest,
+        req: akagi::tutorial::provider::ChatRequest,
     ) -> anyhow::Result<akagi::tutorial::provider::ChatResponse> {
+        let user = req
+            .messages
+            .get(1)
+            .map(|m| m.content.as_str())
+            .unwrap_or_default();
+        let content = fake_reply_for(user);
         Ok(akagi::tutorial::provider::ChatResponse {
-            content: serde_json::json!({
-                "junme": 0,
-                "recommended": "dahai:E",
-                "numbers": {},
-                "explanation_zh": "模拟讲解：先切孤张字牌，保留两面搭子推进一向听。",
-                "headline": "模拟巡讲解",
-            })
-            .to_string(),
+            content,
             model: Some("sim-fake".into()),
             usage: None,
         })
     }
+}
+
+/// Parse the turn blocks out of a rendered user prompt and build a
+/// shape-matching reply. Review prompts (「共 N 个决策点」) get a
+/// ReviewDoc; single-turn prompts get a TurnDoc. Falls back to a canned
+/// single turn when nothing parses.
+fn fake_reply_for(user: &str) -> String {
+    let mut turns: Vec<(u32, serde_json::Value)> = Vec::new();
+    for block in user.split("=== 巡 ").skip(1) {
+        let Some((junme, block)) = block.split_once(" ===") else {
+            continue;
+        };
+        let Ok(junme) = junme.trim().parse::<u32>() else {
+            continue;
+        };
+        let Some((label, numbers)) = parse_first_candidate(block) else {
+            continue;
+        };
+        turns.push((
+            junme,
+            serde_json::json!({
+                "junme": junme,
+                "recommended": label,
+                "numbers": numbers,
+                "explanation_zh": "（离线脚本占位回显：结构与数字均取自 prompt 原文。）",
+                "headline": "离线占位",
+            }),
+        ));
+    }
+    let values: Vec<serde_json::Value> = turns.into_iter().map(|(_, v)| v).collect();
+    if user.contains("个决策点") && !values.is_empty() {
+        serde_json::json!({
+            "overview": "（离线脚本占位回显：结构与数字均取自 prompt 原文。）",
+            "turns": values,
+        })
+        .to_string()
+    } else if let Some(first) = values.into_iter().next() {
+        first.to_string()
+    } else {
+        serde_json::json!({
+            "junme": 0,
+            "recommended": "dahai:E",
+            "numbers": {},
+            "explanation_zh": "模拟讲解：先切孤张字牌，保留两面搭子推进一向听。",
+            "headline": "模拟巡讲解",
+        })
+        .to_string()
+    }
+}
+
+/// `(label, numbers)` of the first candidate line of one turn block —
+/// echoed verbatim so strict cross-checks pass offline too.
+fn parse_first_candidate(block: &str) -> Option<(String, serde_json::Value)> {
+    let cand = block.find("候选:")?;
+    let line_start = cand + block[cand..].find("  1. ")? + 5;
+    let line = &block[line_start..];
+    let line = &line[..line.find('\n')?];
+    let label = line[..line.find(" (p=")?].to_string();
+    let tail = &line[line.find(") ")? + 2..];
+    let mut it = tail.split(' ');
+    let shanten: i32 = it.next()?.trim_start_matches("向听").parse().ok()?;
+    let num = |s: Option<&str>| -> Option<serde_json::Value> {
+        let s = s?.trim_start_matches(|c: char| !c.is_ascii_digit() && c != '-' && c != 'n');
+        if s == "null" || s.is_empty() {
+            return None;
+        }
+        s.parse::<f64>().ok().map(serde_json::Value::from)
+    };
+    let win = num(it.next());
+    let risk = num(it.next());
+    let score = it
+        .next()
+        .and_then(|s| s.trim_start_matches("打点").parse::<i64>().ok());
+    Some((
+        label,
+        serde_json::json!({
+            "shanten": shanten,
+            "win_rate": win,
+            "deal_in_rate": risk,
+            "avg_score": score,
+        }),
+    ))
 }
 
 /// One captured live-sim request: exactly what left the machine and what
