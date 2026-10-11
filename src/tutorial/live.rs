@@ -141,7 +141,15 @@ pub async fn drive_loop(
                             build_live_turn(&snap, &resp, our_draws)
                         {
                             let _ = seat; // seat already bound above
-                            if config.read().await.tutorial.coach.auto_policy != AutoPolicy::Off {
+                            // `coach.enabled` is the master switch — auto
+                            // generation must not spend money while the
+                            // tile (its only renderer) is switched off.
+                            let coach_on = {
+                                let coach_cfg =
+                                    &config.read().await.tutorial.coach;
+                                coach_cfg.enabled && coach_cfg.auto_policy != AutoPolicy::Off
+                            };
+                            if coach_on {
                                 let job = AutoJob {
                                     session_key: session_key.clone(),
                                     material: material.clone(),
@@ -192,10 +200,10 @@ pub async fn auto_explain_worker(
     debug!("live auto explain worker started");
     while let Some(job) = rx.recv().await {
         let cfg = config.read().await.tutorial.clone();
-        // Consume-time re-check: the policy may have been turned off
-        // while this job sat in the queue.
-        if cfg.coach.auto_policy == AutoPolicy::Off {
-            debug!("live auto skipped (policy off at consume time)");
+        // Consume-time re-check: the policy (or the coach master switch)
+        // may have been turned off while this job sat in the queue.
+        if !cfg.coach.enabled || cfg.coach.auto_policy == AutoPolicy::Off {
+            debug!("live auto skipped (coach off at consume time)");
             continue;
         }
         if !crate::tutorial::upload::outbound_allowed(&cfg) {
@@ -455,6 +463,7 @@ mod tests {
                 ..Default::default()
             };
         }
+        c.tutorial.coach.enabled = true;
         c.tutorial.coach.auto_policy = policy;
         c
     }
@@ -544,8 +553,13 @@ mod tests {
 
     #[tokio::test]
     async fn worker_skips_when_policy_consent_or_endpoint_missing() {
+        // Master-switch-off variant: coach tile disabled → no spend even
+        // with the policy on (the tile is the auto docs' only renderer).
+        let mut coach_off = app_cfg(AutoPolicy::All, true, true);
+        coach_off.tutorial.coach.enabled = false;
         for (tag, cfg) in [
             ("policy-off", app_cfg(AutoPolicy::Off, true, true)),
+            ("coach-off", coach_off),
             ("consent-off", app_cfg(AutoPolicy::All, false, true)),
             ("no-endpoint", app_cfg(AutoPolicy::All, true, false)),
         ] {

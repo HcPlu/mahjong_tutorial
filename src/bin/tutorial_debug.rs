@@ -388,6 +388,7 @@ async fn live_sim_run(
     let mut sim_cfg = cfg.clone();
     sim_cfg.tutorial.enabled = true;
     sim_cfg.tutorial.upload_consent = !no_consent;
+    sim_cfg.tutorial.coach.enabled = true;
     sim_cfg.tutorial.coach.auto_policy = akagi::config::AutoPolicy::All;
     if fake {
         // The fake factory never contacts anything, but the gates still
