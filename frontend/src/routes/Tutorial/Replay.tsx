@@ -50,7 +50,18 @@ export function Replay({ gameId, onExit }: Props) {
   const canOutbound = outboundAllowed(tutorialCfg)
 
   useEffect(() => {
-    void st.openGame(gameId)
+    void st.openGame(gameId).then(() => {
+      // Bot column without a click: the reference replay is local, fast
+      // and cached forever — generate it on open whenever a replayable
+      // bot is configured. The manual button stays for retry after an
+      // error. (Read via getState: config identity churn must not reset
+      // the stepper by re-running this effect.)
+      const s = useTutorialStore.getState()
+      const cfg = useConfigStore.getState().config
+      const active =
+        s.outline?.num_players === 3 ? cfg?.bot.active_3p : cfg?.bot.active_4p
+      if (!s.botRef && !s.botRefError && active) void s.loadBotRef(true)
+    })
     // openGame is stable enough for this page's lifetime (keyed by gameId
     // at the route level); re-running on store identity churn would reset
     // the stepper mid-session.
