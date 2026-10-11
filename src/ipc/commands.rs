@@ -1406,8 +1406,12 @@ pub async fn tutorial_replay_outline(
 }
 
 /// One replay step: the game snapshot at `event_index` (inclusive), its
-/// pre-encoded mahgen view, and — when the index lands on the reviewed
-/// seat's discard window — the full local analysis for that decision.
+/// pre-encoded mahgen view, and the full local analysis of the decision
+/// active at that position — the reviewed seat's discard window when the
+/// index lands on the draw, otherwise the enclosing decision's (scrubbing
+/// between turns keeps the last candidates on screen). The outline cache
+/// supplies the decision indices; `analysis` is `None` before the first
+/// decision or when no outline is cached yet.
 #[tauri::command]
 pub async fn tutorial_replay_step(
     game_id: String,
@@ -1415,6 +1419,7 @@ pub async fn tutorial_replay_step(
     state: State<'_, AppState>,
 ) -> CmdResult<Option<ReplayStep>> {
     let store = state.history_store.clone();
+    let tutorial = state.tutorial.clone();
     tokio::task::spawn_blocking(move || -> anyhow::Result<Option<ReplayStep>> {
         let Some(record) = store.get(&game_id)? else {
             return Ok(None);
@@ -1434,7 +1439,15 @@ pub async fn tutorial_replay_step(
                 .ok()
                 .map(|info| crate::analysis::analyze(&info))
         } else {
-            None
+            match tutorial.store.load_outline(&game_id)? {
+                Some(outline) => crate::tutorial::assemble::enclosing_analysis(
+                    &events,
+                    seat,
+                    event_index as usize,
+                    &outline,
+                )?,
+                None => None,
+            }
         };
         Ok(Some(ReplayStep {
             snapshot: snap,

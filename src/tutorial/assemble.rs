@@ -229,6 +229,39 @@ pub fn is_discard_window(snap: &crate::game_state::snapshot::GameStateSnapshot, 
             .is_some_and(|p| p.tehai.len() % 3 == 2)
 }
 
+/// Analysis for a replay step that scrubbed *past* a decision's draw
+/// event (opponents drawing/discarding between our turns): the last
+/// decision at or before `upto` is still the live one, so its candidate
+/// table stays on screen until the next draw. `None` before the first
+/// decision, and when `outline` carries none (the UI always fetches the
+/// outline before it starts stepping, so a step request mid-window has
+/// one available).
+pub fn enclosing_analysis(
+    events: &[MjaiEvent],
+    seat: u8,
+    upto: usize,
+    outline: &ReplayOutline,
+) -> Result<Option<AnalysisResult>> {
+    let Some(&OutlineDecision {
+        event_index: draw_at,
+        ..
+    }) = outline
+        .decisions
+        .iter()
+        .rev()
+        .find(|d| d.event_index <= upto as u32)
+    else {
+        return Ok(None);
+    };
+    let Some(snap) = replay_snapshot_at(events, seat, draw_at as usize)? else {
+        return Ok(None);
+    };
+    if !is_discard_window(&snap, seat) {
+        return Ok(None);
+    }
+    Ok(to_player_info(&snap, seat).ok().map(|info| analyze(&info)))
+}
+
 /// Lightweight scan summary for the frontend replay stepper: where the
 /// reviewed seat's decision points are and which are key turns.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -789,6 +822,53 @@ mod tests {
             ..split
         };
         assert!(!is_key_turn(&split_hidden));
+    }
+
+    #[test]
+    fn enclosing_analysis_persists_through_the_turn_window() {
+        let events = small_game();
+        let outline = scan_decisions(&events, 0)
+            .unwrap()
+            .to_outline(0, events.len());
+        // Before the first draw (indices 0-1): no decision is live yet.
+        assert!(enclosing_analysis(&events, 0, 1, &outline)
+            .unwrap()
+            .is_none());
+        // Anywhere from the first draw (index 2) until the second (index
+        // 10 — three opponents draw/discard in between): the first
+        // decision's candidate table, unchanged.
+        let maintain = |a: Option<AnalysisResult>| {
+            a.unwrap()
+                .hand14
+                .map(|h| {
+                    h.maintain
+                        .iter()
+                        .map(|c| c.discard.clone())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+        let turn1 = maintain(enclosing_analysis(&events, 0, 2, &outline).unwrap());
+        for i in 3..10 {
+            assert_eq!(
+                maintain(enclosing_analysis(&events, 0, i, &outline).unwrap()),
+                turn1,
+                "index {i} is still inside turn 1's window"
+            );
+        }
+        // From the second draw on it is turn 2's table (a different hand
+        // after the first discard).
+        let turn2 = maintain(enclosing_analysis(&events, 0, 10, &outline).unwrap());
+        assert_ne!(turn1, turn2);
+        assert_eq!(
+            maintain(enclosing_analysis(&events, 0, events.len() - 1, &outline).unwrap()),
+            turn2,
+            "after the last decision its window runs to the end"
+        );
+        // An outline without decisions never yields an analysis.
+        assert!(enclosing_analysis(&events, 0, 5, &ReplayOutline::default())
+            .unwrap()
+            .is_none());
     }
 
     #[test]
