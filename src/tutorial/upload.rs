@@ -68,7 +68,7 @@ fn turn_system_prompt() -> String {
      与 explanation_zh（60-120字讲解：取舍逻辑、与其他候选的对比、需要注意的局势）。\
      recommended 填 bot 首选。\n\
      规则背景：立直麻将（日本麻将）。手牌13张、每巡摸1切1，和了形=4面子1雀头（七对/国士例外）；\
-     门清听牌可立直（供托1000点）；切牌点炮=铳。记号：dahai:X=切牌X、reach=宣言立直（mjai 协议原样标签）；5mr/5pr/5sr=红宝牌；ESWN=风牌、PFC=三元牌。\
+     门清听牌可立直（供托1000点）；切牌点炮=铳。记号：dahai:X=切牌X、reach=宣言立直（mjai 协议原样标签）；5mr/5pr/5sr=红宝牌；ESWN=风牌、三元牌P=白/F=发/C=中。\
      术语：向听=距听牌还差的有效切牌数；进张/待牌=能推进听牌的摸牌；现物=某家牌河出现过的牌，对该家安全；\
      各家牌河按打出顺序列出，可据其判断对手速度与安全牌。讲解面向初中级玩家：关键术语首次出现时顺带半句白话解释。\n\
      铁律：numbers 字段的数字必须逐字段原样复制；讲解正文里引用数字时用百分数保留1-2位小数，禁止编造任何不在输入中的数字；不得推荐候选之外的打法。\n\
@@ -93,7 +93,7 @@ fn system_prompt() -> String {
      4. 若该巡给出 Bot参照（离线 bot 复算的首选与概率），在讲解中对比学员实际选择与 bot 首选\
      （一致时点明共识，分歧时解释 bot 的取舍），并可用各巡牌河信息辅助判断攻防与安全牌。\n\
      规则背景：立直麻将（日本麻将）。手牌13张、每巡摸1切1，和了形=4面子1雀头（七对/国士例外）；\
-     门清听牌可立直（供托1000点）；切牌点炮=铳。记号：dahai:X=切牌X、reach=宣言立直（mjai 协议原样标签）；5mr/5pr/5sr=红宝牌；ESWN=风牌、PFC=三元牌。\
+     门清听牌可立直（供托1000点）；切牌点炮=铳。记号：dahai:X=切牌X、reach=宣言立直（mjai 协议原样标签）；5mr/5pr/5sr=红宝牌；ESWN=风牌、三元牌P=白/F=发/C=中。\
      术语：向听=距听牌还差的有效切牌数；进张/待牌=能推进听牌的摸牌；现物=某家牌河出现过的牌，对该家安全；\
      各家牌河按打出顺序列出，可据其判断对手速度与安全牌。讲解面向初中级玩家：关键术语首次出现时顺带半句白话解释。\n\
      铁律：numbers 字段的数字必须逐字段原样复制；讲解正文里引用数字时用百分数保留1-2位小数（如0.03624写作3.6%），禁止编造任何不在输入中的数字；不得推荐候选之外的打法。\
@@ -323,11 +323,14 @@ mod tests {
         let msgs = build_messages(&redact(&sample_material()));
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].role, "system");
-        // The JSON contract must name the fields download parses.
+        // The JSON contract must name the fields download parses, and the
+        // notation anchor must map each dragon letter (a bare "PFC=三元牌"
+        // once let the model call a 中 pair 白).
         for key in [
             "explanation_zh",
             "recommended",
             "numbers",
+            "P=白/F=发/C=中",
             "win_rate",
             "overview",
         ] {
@@ -362,5 +365,18 @@ mod tests {
         assert!(msgs[0].content.contains("规则背景"));
         assert!(msgs[0].content.contains("现物"));
         assert!(msgs[0].content.contains("Bot参照"));
+    }
+
+    #[test]
+    fn build_turn_messages_carries_anchor_and_material() {
+        let turn = sample_material().turns.remove(0);
+        let msgs = build_turn_messages(&turn);
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0].role, "system");
+        // Same notation anchor as the review prompt, dragon letters named.
+        assert!(msgs[0].content.contains("P=白/F=发/C=中"));
+        assert_eq!(msgs[1].role, "user");
+        // The live prompt narrates the bot's own live probabilities.
+        assert!(msgs[1].content.contains("(p=0.4400)"));
     }
 }
