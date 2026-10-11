@@ -30,6 +30,7 @@ const REVIEWS_SUBDIR: &str = "reviews";
 const LIVE_SUBDIR: &str = "live";
 const BOTREF_SUBDIR: &str = "botrefs";
 const OUTLINES_SUBDIR: &str = "outlines";
+const BOTLIVE_SUBDIR: &str = "botlive";
 
 pub struct TutorialStore {
     root: PathBuf,
@@ -39,7 +40,7 @@ pub struct TutorialStore {
 
 impl TutorialStore {
     /// Open (or create) the store at `root`, creating `reviews/`,
-    /// `live/`, `botrefs/` and `outlines/` if missing.
+    /// `live/`, `botrefs/`, `botlive/` and `outlines/` if missing.
     pub fn new(root: PathBuf) -> Result<Self> {
         fs::create_dir_all(root.join(REVIEWS_SUBDIR))
             .with_context(|| format!("failed to create tutorial dir {}", root.display()))?;
@@ -47,6 +48,8 @@ impl TutorialStore {
             .with_context(|| format!("failed to create tutorial live dir {}", root.display()))?;
         fs::create_dir_all(root.join(BOTREF_SUBDIR))
             .with_context(|| format!("failed to create tutorial botrefs dir {}", root.display()))?;
+        fs::create_dir_all(root.join(BOTLIVE_SUBDIR))
+            .with_context(|| format!("create {}", root.join(BOTLIVE_SUBDIR).display()))?;
         fs::create_dir_all(root.join(OUTLINES_SUBDIR)).with_context(|| {
             format!("failed to create tutorial outlines dir {}", root.display())
         })?;
@@ -229,6 +232,50 @@ impl TutorialStore {
             .root
             .join(OUTLINES_SUBDIR)
             .join(format!("{game_id}.json")))
+    }
+
+    // --- live bot-answer recordings (D-0017) ---
+
+    /// Persist one live session's recorded bot answers under
+    /// `botlive/<session_key>.json`. The session key is path-safe by
+    /// construction (same alphabet `validate_game_id` allows).
+    pub fn save_botlive(&self, doc: &crate::tutorial::botlive::LiveBotDoc) -> Result<()> {
+        let _g = self
+            .write_lock
+            .lock()
+            .expect("tutorial write lock poisoned");
+        validate_game_id(&doc.session_key)?;
+        let path = self
+            .root
+            .join(BOTLIVE_SUBDIR)
+            .join(format!("{}.json", doc.session_key));
+        let body = serde_json::to_string_pretty(doc).context("serialise LiveBotDoc")?;
+        fs::write(&path, body).with_context(|| format!("failed to write {}", path.display()))?;
+        Ok(())
+    }
+
+    /// Every live recording on disk, oldest file first. Unparsable
+    /// files are logged and skipped — one bad session must not hide
+    /// the others from the replay matcher.
+    pub fn list_botlive(&self) -> Result<Vec<crate::tutorial::botlive::LiveBotDoc>> {
+        let dir = self.root.join(BOTLIVE_SUBDIR);
+        let mut docs = Vec::new();
+        for entry in fs::read_dir(&dir).with_context(|| format!("list {}", dir.display()))? {
+            let path = entry?.path();
+            if path.extension().is_none_or(|e| e != "json") {
+                continue;
+            }
+            match fs::read_to_string(&path)
+                .with_context(|| format!("failed to read {}", path.display()))
+                .and_then(|body| {
+                    serde_json::from_str::<crate::tutorial::botlive::LiveBotDoc>(&body)
+                        .with_context(|| format!("corrupt live bot doc at {}", path.display()))
+                }) {
+                Ok(doc) => docs.push(doc),
+                Err(e) => tracing::warn!("skipping live bot doc: {e:#}"),
+            }
+        }
+        Ok(docs)
     }
 }
 

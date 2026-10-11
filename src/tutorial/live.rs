@@ -97,6 +97,12 @@ pub struct AutoJob {
 /// bounded; a full queue means the worker is multiple turns behind —
 /// only realistic during a reconnect burst, where stale restore turns
 /// are exactly the ones worth dropping.
+///
+/// The same decision points also feed the D-0017 bot-answer recorder:
+/// every bot response that lands on our discard window is appended to
+/// the session's `LiveBotDoc` and flushed to the store at session end
+/// (`StartGame`/`EndGame`). Pure bookkeeping — failures are logged,
+/// never propagated into the coach path.
 pub async fn drive_loop(
     mut post_rx: broadcast::Receiver<TrackedEvent>,
     mut bot_rx: broadcast::Receiver<BotResponse>,
@@ -104,21 +110,37 @@ pub async fn drive_loop(
     coach: LiveCoachHandle,
     config: Arc<AsyncRwLock<AppConfig>>,
     auto_tx: mpsc::Sender<AutoJob>,
+    ctx: Arc<TutorialContext>,
 ) {
     debug!("live coach subscribed to post-tracker + bot-response buses");
     let mut session_key = String::new();
     let mut seat: Option<u8> = None;
     let mut our_draws: u32 = 0;
+    let mut botlive = crate::tutorial::botlive::BotLiveRecorder::default();
 
     loop {
         tokio::select! {
             ev = post_rx.recv() => {
                 match ev {
                     Ok(TrackedEvent { event, .. }) => match &event {
-                        MjaiEvent::StartGame { id, .. } => {
+                        MjaiEvent::StartGame { id, num_players, .. } => {
+                            flush_botlive(&ctx, &mut botlive);
                             seat = *id;
                             our_draws = 0;
                             session_key = new_session_key(*id);
+                            // Which bot is answering this game — recorded
+                            // once per session so the replay page can say
+                            // "the bot that played then" precisely.
+                            let bot_name = crate::tutorial::botlive::active_bot_name(
+                                &*config.read().await,
+                                *num_players,
+                            );
+                            if let Some(seat) = seat {
+                                botlive.start(&session_key, seat, &bot_name);
+                            }
+                        }
+                        MjaiEvent::EndGame { .. } => {
+                            flush_botlive(&ctx, &mut botlive);
                         }
                         MjaiEvent::Tsumo { actor, .. } if Some(*actor) == seat => {
                             our_draws += 1;
@@ -140,6 +162,10 @@ pub async fn drive_loop(
                         if let Some(material) =
                             build_live_turn(&snap, &resp, our_draws)
                         {
+                            botlive.record(crate::tutorial::botlive::classify_response(
+                                material.junme,
+                                &resp,
+                            ));
                             let _ = seat; // seat already bound above
                             // `coach.enabled` is the master switch — auto
                             // generation must not spend money while the
@@ -175,6 +201,19 @@ pub async fn drive_loop(
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
+        }
+    }
+}
+
+/// Persist the recorder's current session, if it has any turns.
+/// Recording must never break the coach: store errors are warnings.
+fn flush_botlive(
+    ctx: &Arc<TutorialContext>,
+    botlive: &mut crate::tutorial::botlive::BotLiveRecorder,
+) {
+    if let Some(doc) = botlive.finish() {
+        if let Err(e) = ctx.store.save_botlive(&doc) {
+            warn!("failed to save live bot doc for {}: {e:#}", doc.session_key);
         }
     }
 }
@@ -726,6 +765,7 @@ mod tests {
             coach.clone(),
             cfg.clone(),
             auto_tx,
+            test_ctx("drive-loop"),
         ));
 
         let tracked = |ev: MjaiEvent| TrackedEvent {

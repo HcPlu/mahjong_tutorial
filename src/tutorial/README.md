@@ -125,6 +125,25 @@ prompt 文本**——两处没有编译期联动，靠这条 README 约束。
 [docs/design/mortal-internals.md](../../docs/design/mortal-internals.md) §5。
 旧缓存缺这两个字段（serde 默认），前端按无标记渲染。
 
+### 对局记录 bot（`botlive/`，D-0017）
+
+上表的 bot 参照是**复盘时**用当前配置的 bot 重放的答案；`botlive.rs`
+则在对局进行中就把 bot 的每次应答（动作 + `meta.show` 分布，经
+`to_botref_turn`——与 botref 共用的唯一转换函数）记进
+`botlive/<session_key>.json`（`LiveBotDoc`：seat、bot 名、RFC3339
+`started_at`、`BotRefTurn[]`）。记录点就在 `live.rs::drive_loop` 的
+决策窗口处，`StartGame`/`EndGame` 落盘；纯本地数据，无 LLM、无 consent
+门，同 junme 重复应答后到者胜。
+
+复盘侧 `tutorial_get_live_bot` 把 live 会话拼回 ULID：匹配条件是
+seat 相等且 `started_at` 落在 `[record.started_at−60s, record.ended_at+60s]`
+（两边都在同一进程对同一个 `StartGame` 盖 `Utc::now()`，实际误差毫秒
+级）；断线重连会把一局拆成多个会话，按 junme 合并、后会话覆盖前会话
+（重连的 restore 重放把 junme 快进回真实值，覆盖即对齐）。产出复用
+`BotRefDoc` 形状。**前端语义：紫色列 = 复盘 bot（现在会怎么打），青色
+列 = 对局 bot（当时实际怎么打）——两者可能不是同一个 bot**，图表在双源
+并存时给百分比加「对局/复盘」前缀并标注各自 bot 名。
+
 ## 配置示例
 
 ```toml

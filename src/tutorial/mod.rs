@@ -17,6 +17,7 @@
 //! these seams later.
 
 pub mod assemble;
+pub mod botlive;
 pub mod context;
 pub mod download;
 pub mod live;
@@ -30,6 +31,7 @@ pub use assemble::{
     build_review_material, scan_decisions, DecisionPoint, OutlineDecision, ReplayOutline,
     ScanResult,
 };
+pub use botlive::{match_live_bot, BotLiveRecorder, LiveBotDoc};
 pub use context::TutorialContext;
 pub use download::{parse_review_doc, parse_turn_doc};
 pub use live::{auto_explain_worker, drive_loop, AutoJob, LiveCoachHandle, LiveTurn};

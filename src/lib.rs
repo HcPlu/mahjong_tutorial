@@ -274,6 +274,7 @@ pub fn run() {
                     live_coach_for_loop,
                     live_config_for_loop,
                     live_auto_tx,
+                    state.tutorial.clone(),
                 ));
                 let worker_config = state.config.clone();
                 let worker_ctx = state.tutorial.clone();
