@@ -292,6 +292,7 @@ mod tests {
                 junme: 6,
                 tehai: vec!["5s".into()],
                 draw: "6m".into(),
+                bot: None,
                 actual: "dahai:5s".into(),
                 candidates: vec![CandidateNumbers {
                     label: "dahai:5s".into(),
@@ -417,6 +418,7 @@ mod tests {
             junme: 5,
             tehai: vec!["5s".into()],
             draw: "6m".into(),
+            bot: None,
             actual: "dahai:5s".into(),
             candidates: vec![CandidateNumbers {
                 label: "dahai:5s".into(),

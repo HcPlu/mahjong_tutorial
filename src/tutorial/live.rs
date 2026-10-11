@@ -370,6 +370,7 @@ pub fn build_live_turn(
         junme,
         tehai,
         draw,
+        bot: None,
         actual,
         candidates,
         context: Some(turn_context(snap, me.riichi_declared)),
@@ -510,6 +511,7 @@ mod tests {
     fn fake_material(junme: u32) -> TurnMaterial {
         TurnMaterial {
             junme,
+            bot: None,
             tehai: vec![
                 "1m", "2m", "3m", "4m", "5m", "6m", "7m", "8m", "9m", "1p", "2p", "3p", "S", "E",
             ]
