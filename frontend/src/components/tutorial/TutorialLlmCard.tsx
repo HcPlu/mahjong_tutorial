@@ -37,6 +37,8 @@ export function TutorialLlmCard({ draft, setDraft }: Props) {
     setDraft({ ...draft, tutorial: { ...cfg, ...p } })
   const patchLlm = (p: Partial<TutorialConfig['llm']>) =>
     patch({ llm: { ...cfg.llm, ...p } })
+  const patchCoach = (p: Partial<TutorialConfig['coach']>) =>
+    patch({ coach: { ...cfg.coach, ...p } })
 
   return (
     <Card>
@@ -78,6 +80,31 @@ export function TutorialLlmCard({ draft, setDraft }: Props) {
             onChange={(e) => patch({ upload_consent: e.target.checked })}
             aria-label={t('settings.tutorial.consent')}
           />
+        </div>
+
+        <div className="grid gap-1.5">
+          <span className="text-sm font-medium">
+            {t('settings.tutorial.auto_policy')}
+          </span>
+          <Select
+            value={cfg.coach.auto_policy ?? 'off'}
+            onValueChange={(v) => patchCoach({ auto_policy: v as 'off' | 'all' })}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">
+                {t('settings.tutorial.auto_policy_off')}
+              </SelectItem>
+              <SelectItem value="all">
+                {t('settings.tutorial.auto_policy_all')}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {t('settings.tutorial.auto_policy_hint')}
+          </p>
         </div>
 
         <div className="grid gap-1.5">

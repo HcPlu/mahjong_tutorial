@@ -238,6 +238,9 @@ export type TutorialCoachConfig = {
   enabled: boolean
   max_per_turn: number
   deep_dive_button: boolean
+  /** D-0014: 'all' = auto-generate one deep-dive per own draw (pre-draw
+   *  racing); 'off' (default) = manual button only. */
+  auto_policy?: 'off' | 'all'
 }
 
 export type TutorialConfig = {

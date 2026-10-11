@@ -259,7 +259,8 @@
     "deep_dive": "详细讲解",
     "deep_loading": "讲解生成中…",
     "deep_needs_config": "需要先配置教程 LLM 并同意上传（设置）",
-    "mute_toggle": "静音/取消静音教练"
+    "mute_toggle": "静音/取消静音教练",
+    "auto_generating": "AI 讲解生成中…"
   },
   "logs": {
     "title": "日志",
@@ -447,7 +448,11 @@
       "api_key": "API Key",
       "api_key_placeholder": "sk-…",
       "api_key_hint": "设置环境变量 TUTORIAL_LLM_API_KEY 后优先生效",
-      "api_key_toggle": "显示/隐藏 Key"
+      "api_key_toggle": "显示/隐藏 Key",
+      "auto_policy": "对局中自动讲解",
+      "auto_policy_hint": "「每次摸牌」会在你摸牌后立即后台生成一条讲解（抢先于切牌决策）；每局约 60-80 次 LLM 调用，费用取决于所配模型，同一巡只花一次。建议搭配 low 推理档以保证速度。",
+      "auto_policy_off": "关闭（仅手动按钮）",
+      "auto_policy_all": "每次摸牌自动生成"
     },
     "title": "设置",
     "general": "通用",

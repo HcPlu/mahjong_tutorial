@@ -8,7 +8,7 @@ export const DEFAULT_TUTORIAL_CONFIG: TutorialConfig = {
   enabled: true,
   upload_consent: false,
   llm: { base_url: '', api_key: '', model: '', request_timeout_ms: 60_000 },
-  coach: { enabled: false, max_per_turn: 1, deep_dive_button: true },
+  coach: { enabled: false, max_per_turn: 1, deep_dive_button: true, auto_policy: 'off' },
 }
 
 /** The tutorial section of a config payload, with defaults for legacy

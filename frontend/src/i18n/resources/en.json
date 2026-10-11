@@ -259,7 +259,8 @@
     "deep_dive": "Explain this turn",
     "deep_loading": "Explaining…",
     "deep_needs_config": "Needs the tutorial LLM configured and upload consent (Settings)",
-    "mute_toggle": "Mute/unmute coach"
+    "mute_toggle": "Mute/unmute coach",
+    "auto_generating": "Generating AI explanation…"
   },
   "logs": {
     "title": "Logs",
@@ -447,7 +448,11 @@
       "api_key": "API key",
       "api_key_placeholder": "sk-…",
       "api_key_hint": "Env var TUTORIAL_LLM_API_KEY overrides this when set",
-      "api_key_toggle": "Show/hide key"
+      "api_key_toggle": "Show/hide key",
+      "auto_policy": "In-game auto explanations",
+      "auto_policy_hint": "\"Every draw\" starts a background explanation right after you draw (racing your discard decision); ~60-80 LLM calls per game, cost depends on the configured model, each turn is paid once.",
+      "auto_policy_off": "Off (manual button only)",
+      "auto_policy_all": "Every draw"
     },
     "title": "Settings",
     "general": "General",

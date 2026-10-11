@@ -61,10 +61,13 @@ type TutorialStore = {
   /** Generate (or re-generate) the LLM review for the open game. */
   generate: () => Promise<void>
   /** Load (replaying the game through the bot if uncached) the bot
-   *  reference for the open game. */
-  loadBotRef: () => Promise<void>
+   *  reference for the open game. `silent` (the auto-run on open) drops
+   *  errors instead of showing them: configs without a replayable bot
+   *  would otherwise greet every replay with an undismissable error —
+   *  the manual button still surfaces them. */
+  loadBotRef: (silent?: boolean) => Promise<void>
 
-  // --- in-game coach slice (M2, D-0008) ---
+  // --- in-game coach slice (M2, D-0008; auto mode D-0014) ---
   coach: {
     /** The current template-layer line (already throttled upstream). */
     line: CommentaryLine | null
@@ -74,12 +77,23 @@ type TutorialStore = {
     deepDoc: TurnDoc | null
     deepLoading: boolean
     deepError: string | null
+    /** Auto-generated explanation for the current draw (D-0014): set on
+     *  `tutorial-live-turn`, cleared on the next bot response. Fresh for
+     *  exactly one turn, so it wins over the possibly-stale deepDoc. */
+    autoDoc: TurnDoc | null
+    /** An auto explanation is in flight for the current draw. */
+    autoPending: boolean
   }
   setCoachLine: (line: CommentaryLine | null) => void
   coachToggleMute: () => void
   /** New game: clear the line, the mute and the deep dive. */
   coachReset: () => void
   explainLive: () => Promise<void>
+  /** New draw while auto mode is on: retire the previous turn's doc and
+   *  mark the new one as pending. */
+  coachAutoTurnStart: () => void
+  /** `tutorial-live-turn` arrived: publish it. */
+  setAutoDoc: (doc: TurnDoc) => void
 }
 
 async function fetchStep(gameId: string, index: number): Promise<ReplayStep | null> {
@@ -108,14 +122,30 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
     deepDoc: null,
     deepLoading: false,
     deepError: null,
+    autoDoc: null,
+    autoPending: false,
   },
 
   setCoachLine: (line) => set((s) => ({ coach: { ...s.coach, line } })),
   coachToggleMute: () => set((s) => ({ coach: { ...s.coach, muted: !s.coach.muted } })),
   coachReset: () =>
     set({
-      coach: { line: null, muted: false, deepDoc: null, deepLoading: false, deepError: null },
+      coach: {
+        line: null,
+        muted: false,
+        deepDoc: null,
+        deepLoading: false,
+        deepError: null,
+        autoDoc: null,
+        autoPending: false,
+      },
     }),
+
+  coachAutoTurnStart: () =>
+    set((s) => ({ coach: { ...s.coach, autoDoc: null, autoPending: true } })),
+
+  setAutoDoc: (doc) =>
+    set((s) => ({ coach: { ...s.coach, autoDoc: doc, autoPending: false } })),
 
   explainLive: async () => {
     if (get().coach.deepLoading) return
@@ -200,7 +230,7 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
     set({ coverage })
   },
 
-  loadBotRef: async () => {
+  loadBotRef: async (silent = false) => {
     const { gameId, botRefLoading } = get()
     if (!gameId || botRefLoading) return
     set({ botRefLoading: true, botRefError: null })
@@ -208,7 +238,10 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
       const botRef = await invoke<BotRefDoc>('tutorial_bot_reference', { gameId })
       set({ botRef, botRefLoading: false })
     } catch (e) {
-      set({ botRefLoading: false, botRefError: String(e) })
+      set({
+        botRefLoading: false,
+        botRefError: silent ? null : String(e),
+      })
     }
   },
 

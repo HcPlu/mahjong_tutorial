@@ -120,3 +120,46 @@ describe('tutorialStore replay + review flow', () => {
     expect(reloaded.useTutorialStore.getState().coverage).toBe('all')
   })
 })
+
+describe('tutorialStore coach auto state (D-0014)', () => {
+  beforeEach(() => {
+    calls.length = 0
+    responses.clear()
+  })
+
+  it('auto turn lifecycle: pending on draw, doc on event, reset on new game', async () => {
+    const { useTutorialStore } = await freshStore()
+    const st = () => useTutorialStore.getState().coach
+
+    // New draw (bot-response heard by the bridge):
+    useTutorialStore.getState().coachAutoTurnStart()
+    expect(st().autoPending).toBe(true)
+    expect(st().autoDoc).toBeNull()
+
+    // tutorial-live-turn arrives:
+    useTutorialStore.getState().setAutoDoc({
+      junme: 4,
+      recommended: 'dahai:S',
+      numbers: { shanten: 2, win_rate: null, deal_in_rate: null, avg_score: null },
+      explanation_zh: '切孤张字牌。',
+      headline: '防守',
+    })
+    expect(st().autoPending).toBe(false)
+    expect(st().autoDoc?.explanation_zh).toBe('切孤张字牌。')
+
+    // Next draw retires the old doc; start_game clears everything.
+    useTutorialStore.getState().coachAutoTurnStart()
+    expect(st().autoDoc).toBeNull()
+    useTutorialStore.getState().setAutoDoc({
+      junme: 5,
+      recommended: 'dahai:P',
+      numbers: { shanten: 1, win_rate: null, deal_in_rate: null, avg_score: null },
+      explanation_zh: '第二巡。',
+      headline: null,
+    })
+    useTutorialStore.getState().coachReset()
+    expect(st().autoDoc).toBeNull()
+    expect(st().autoPending).toBe(false)
+    expect(st().muted).toBe(false)
+  })
+})

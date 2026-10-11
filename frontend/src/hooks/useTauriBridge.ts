@@ -27,6 +27,7 @@ import { useTutorialStore } from '@/stores/tutorialStore'
 import { toast, type ToastSeverity } from '@/components/ui/sonner'
 import { evaluate } from '@/components/tutorial/commentary/engine'
 import { CommentaryThrottle, turnKey } from '@/components/tutorial/commentary/throttle'
+import type { TutorialLiveEvent } from '@/components/tutorial/types'
 import { pickShow } from '@/lib/botShow'
 import { getTutorialConfig } from '@/components/tutorial/configGate'
 
@@ -133,7 +134,13 @@ export function useTauriBridge() {
       // (numbers straight from the analysis store / bot meta, never new
       // math; D-0005).
       const cfg = useConfigStore.getState().config
-      if (getTutorialConfig(cfg).coach.enabled) {
+      const tcfg = getTutorialConfig(cfg)
+      if (tcfg.coach.enabled) {
+        // Auto mode (D-0014): the backend queued a background generation
+        // for this draw — show the pending state until the result event.
+        if (tcfg.coach.auto_policy === 'all') {
+          useTutorialStore.getState().coachAutoTurnStart()
+        }
         const snap = useGameStore.getState().game
         if (snap && coachThrottle.allow(turnKey(snap))) {
           const line = evaluate(
@@ -144,6 +151,12 @@ export function useTauriBridge() {
           if (line) useTutorialStore.getState().setCoachLine(line)
         }
       }
+    }).then((u) => unlistens.push(u))
+
+    // Auto-generated live deep-dive arrived (D-0014) — fresh generation
+    // or cache replay; either way it belongs to the current draw.
+    listen<TutorialLiveEvent>('tutorial-live-turn', (ev) => {
+      useTutorialStore.getState().setAutoDoc(ev.doc)
     }).then((u) => unlistens.push(u))
 
     // The overlay window can turn itself off (its × button). Mirror that back

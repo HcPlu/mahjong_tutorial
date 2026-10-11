@@ -1,8 +1,10 @@
-// In-game coach tile (M2, D-0008): the template layer's deterministic
-// one-liner plus the on-demand LLM deep dive. Rendering is gated by
-// `[tutorial.coach] enabled`; the deep-dive button additionally needs
-// the outbound gate (consent + configured endpoint) — otherwise it
-// explains where to fix that instead.
+// In-game coach tile (M2, D-0008; auto mode D-0014): the template
+// layer's deterministic one-liner, the on-demand LLM deep dive, and —
+// when `[tutorial.coach] auto_policy = "all"` — the auto-generated
+// explanation that lands a few seconds after each draw (pending spinner
+// first). Rendering is gated by `[tutorial.coach] enabled`; the deep-dive
+// layers additionally need the outbound gate (consent + configured
+// endpoint) — otherwise they explain where to fix that instead.
 
 import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -27,11 +29,21 @@ export function CommentaryTile({ bp }: { bp: Breakpoint }) {
   const muted = useTutorialStore((s) => s.coach.muted)
   const deepDoc = useTutorialStore((s) => s.coach.deepDoc)
   const deepLoading = useTutorialStore((s) => s.coach.deepLoading)
+  const autoDoc = useTutorialStore((s) => s.coach.autoDoc)
+  const autoPending = useTutorialStore((s) => s.coach.autoPending)
   const listRef = useRef<HTMLDivElement>(null)
 
   const cfg = getTutorialConfig(config)
   const canOutbound = outboundAllowed(cfg)
   const showDeep = coachCfg.deep_dive_button
+  // Auto mode: only promise a pending spinner when the backend can
+  // actually generate (enabled + policy + outbound gate), and stay quiet
+  // while muted — the user asked for silence.
+  const autoOn =
+    coachCfg.enabled && coachCfg.auto_policy === 'all' && canOutbound && !muted
+  // The auto doc is fresh for this exact draw; a lingering manual deepDoc
+  // may describe an older turn, so the auto doc wins whenever present.
+  const shownDoc = autoOn && autoDoc ? autoDoc : deepDoc
 
   const lineNode = () => {
     if (!coachCfg.enabled) {
@@ -80,29 +92,59 @@ export function CommentaryTile({ bp }: { bp: Breakpoint }) {
     >
       <div ref={listRef} className="flex h-full flex-col gap-2">
         {lineNode()}
-        {showDeep && (
+        {(showDeep || autoOn) && (
           <div className="mt-auto space-y-2">
-            <Button
-              size="sm"
-              variant={canOutbound ? 'outline' : 'ghost'}
-              disabled={deepLoading || !canOutbound}
-              title={canOutbound ? undefined : t('coach.deep_needs_config')}
-              onClick={() => void runDeep()}
-            >
-              {deepLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-              {deepLoading ? t('coach.deep_loading') : t('coach.deep_dive')}
-            </Button>
-            {deepDoc && (
-              <div className="rounded-md border border-border px-2 py-1.5">
-                {deepDoc.headline && (
-                  <p className="text-sm font-semibold">{tileNamesZh(deepDoc.headline)}</p>
+            {autoOn && autoPending && !shownDoc && (
+              <p
+                className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                data-testid="coach-auto-pending"
+              >
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t('coach.auto_generating')}
+              </p>
+            )}
+            {autoOn && autoDoc && (
+              <div
+                className="rounded-md border border-border px-2 py-1.5"
+                data-testid="coach-auto-doc"
+              >
+                {autoDoc.headline && (
+                  <p className="text-sm font-semibold">{tileNamesZh(autoDoc.headline)}</p>
                 )}
-                <p className="text-sm leading-relaxed">{tileNamesZh(deepDoc.explanation_zh)}</p>
+                <p className="text-sm leading-relaxed">
+                  {tileNamesZh(autoDoc.explanation_zh)}
+                </p>
               </div>
+            )}
+            {showDeep && (
+              <>
+                <Button
+                  size="sm"
+                  variant={canOutbound ? 'outline' : 'ghost'}
+                  disabled={deepLoading || !canOutbound}
+                  title={canOutbound ? undefined : t('coach.deep_needs_config')}
+                  onClick={() => void runDeep()}
+                >
+                  {deepLoading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  {deepLoading ? t('coach.deep_loading') : t('coach.deep_dive')}
+                </Button>
+                {deepDoc && !(autoOn && autoDoc) && (
+                  <div className="rounded-md border border-border px-2 py-1.5">
+                    {deepDoc.headline && (
+                      <p className="text-sm font-semibold">
+                        {tileNamesZh(deepDoc.headline)}
+                      </p>
+                    )}
+                    <p className="text-sm leading-relaxed">
+                      {tileNamesZh(deepDoc.explanation_zh)}
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

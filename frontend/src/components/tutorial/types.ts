@@ -22,6 +22,16 @@ export type TurnDoc = {
   headline: string | null
 }
 
+/** Payload of the `tutorial-live-turn` event (D-0014): one auto-generated
+ *  (or cache-replayed) live deep-dive, broadcast the moment it becomes
+ *  available. */
+export type TutorialLiveEvent = {
+  session_key: string
+  junme: number
+  doc: TurnDoc
+  model: string | null
+}
+
 export type ReviewDoc = {
   game_id: string
   seat: number

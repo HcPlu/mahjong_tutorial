@@ -259,7 +259,8 @@
     "deep_dive": "詳細講解",
     "deep_loading": "講解產生中…",
     "deep_needs_config": "需要先設定教學 LLM 並同意上傳（設定）",
-    "mute_toggle": "靜音/取消靜音教練"
+    "mute_toggle": "靜音/取消靜音教練",
+    "auto_generating": "AI 講解生成中…"
   },
   "logs": {
     "title": "日誌",
@@ -447,7 +448,11 @@
       "api_key": "API Key",
       "api_key_placeholder": "sk-…",
       "api_key_hint": "設定環境變數 TUTORIAL_LLM_API_KEY 後優先生效",
-      "api_key_toggle": "顯示/隱藏 Key"
+      "api_key_toggle": "顯示/隱藏 Key",
+      "auto_policy": "對局中自動講解",
+      "auto_policy_hint": "「每次摸牌」會在你摸牌後立即背景生成一條講解（搶先於切牌決策）；每局約 60-80 次 LLM 呼叫，費用取決於所配模型，同一巡只花一次。建議搭配 low 推理檔以保證速度。",
+      "auto_policy_off": "關閉（僅手動按鈕）",
+      "auto_policy_all": "每次摸牌自動生成"
     },
     "title": "設定",
     "general": "一般",
