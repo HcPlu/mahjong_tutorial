@@ -240,7 +240,11 @@
     "bot_chosen": "Bot 实选",
     "bot_source_model": "Bot：模型直出",
     "bot_source_rule_forced": "Bot：规则强制（无候选分布）",
-    "bot_source_rule_overridden": "Bot：规则否决模型首选"
+    "bot_source_rule_overridden": "Bot：规则否决模型首选",
+    "param_model": "模型",
+    "param_thinking": "思考",
+    "param_custom": "自定义…",
+    "thinking_default": "默认"
   },
   "coach": {
     "disabled": "教练未开启——在设置 → AI 教程 中打开。",

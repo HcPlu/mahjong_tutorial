@@ -240,7 +240,11 @@
     "bot_chosen": "Bot採用",
     "bot_source_model": "Bot：モデル直接",
     "bot_source_rule_forced": "Bot：ルール強制（候補分布なし）",
-    "bot_source_rule_overridden": "Bot：ルールがモデル第一位を却下"
+    "bot_source_rule_overridden": "Bot：ルールがモデル第一位を却下",
+    "param_model": "モデル",
+    "param_thinking": "思考",
+    "param_custom": "カスタム…",
+    "thinking_default": "既定"
   },
   "coach": {
     "disabled": "コーチはオフです。設定 → AIチュートリアル で有効にしてください。",

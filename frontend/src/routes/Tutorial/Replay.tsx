@@ -31,6 +31,7 @@ import { CandidateChart } from '@/components/tutorial/CandidateChart'
 import { ExplanationCard } from '@/components/tutorial/ExplanationCard'
 import { ReplayBoard } from '@/components/tutorial/ReplayBoard'
 import { getTutorialConfig, outboundAllowed } from '@/components/tutorial/configGate'
+import { GenerationParams } from '@/components/tutorial/GenerationParams'
 import type { OutlineDecision } from '@/components/tutorial/types'
 import { useConfigStore } from '@/stores/configStore'
 import { useTutorialStore } from '@/stores/tutorialStore'
@@ -170,6 +171,7 @@ export function Replay({ gameId, onExit }: Props) {
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
+          <GenerationParams />
           {st.doc?.overview ? (
             <p className="text-sm leading-relaxed">{st.doc.overview}</p>
           ) : st.generating ? (

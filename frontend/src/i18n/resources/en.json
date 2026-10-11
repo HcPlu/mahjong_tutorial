@@ -240,7 +240,11 @@
     "bot_chosen": "Bot played",
     "bot_source_model": "Bot: model pick",
     "bot_source_rule_forced": "Bot: rule-forced (no distribution)",
-    "bot_source_rule_overridden": "Bot: rule overrode model's top"
+    "bot_source_rule_overridden": "Bot: rule overrode model's top",
+    "param_model": "Model",
+    "param_thinking": "Thinking",
+    "param_custom": "Custom…",
+    "thinking_default": "default"
   },
   "coach": {
     "disabled": "Coach is off — enable it in Settings → AI Tutorial.",
