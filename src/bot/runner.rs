@@ -275,9 +275,20 @@ mod tests {
     use tempfile::TempDir;
 
     fn system_python() -> Option<PathBuf> {
+        // On Windows `python3` can resolve to the Microsoft Store alias:
+        // an exe that sits in PATH but, when run, only prints an install
+        // hint and exits — `which` passes while every spawned bot dies on
+        // the spot ("stdout EOF"). Probe each candidate with `--version`
+        // and keep the first python that actually executes.
         which::which("python3")
-            .or_else(|_| which::which("python"))
-            .ok()
+            .into_iter()
+            .chain(which::which("python"))
+            .find(|py| {
+                std::process::Command::new(py)
+                    .arg("--version")
+                    .output()
+                    .is_ok_and(|o| o.status.success())
+            })
     }
 
     fn write_echo_bot(dir: &Path) {
