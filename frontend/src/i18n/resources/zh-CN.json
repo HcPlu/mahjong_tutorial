@@ -231,7 +231,12 @@
     "explanation": "AI 讲解",
     "explanation_missing": "当前覆盖档没有这一巡的讲解——切到全部巡或重新生成。",
     "explanation_need_generate": "生成讲解后即可查看这一巡的 AI 讲解。",
-    "score": "评分"
+    "score": "评分",
+    "bot_ref": "Bot 参照",
+    "bot_ref_hint": "用配置的 bot（mortal）离线重放这局，显示每个候选的 bot 置信",
+    "bot_ref_done": "{{bot}} ✓",
+    "bot_prob": "Bot {{p}}%",
+    "bot_pick": "Bot 首选"
   },
   "coach": {
     "disabled": "教练未开启——在设置 → AI 教程 中打开。",

@@ -44,6 +44,7 @@ pub mod capture_supervisor;
 pub mod commands;
 pub mod overlay;
 pub mod state;
+pub mod tutorial_botref;
 
 pub use state::AppState;
 

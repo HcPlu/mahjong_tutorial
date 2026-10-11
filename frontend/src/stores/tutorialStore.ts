@@ -12,6 +12,7 @@ import { create } from 'zustand'
 import { invoke } from '@/lib/tauri'
 import type { CommentaryLine } from '@/components/tutorial/commentary/engine'
 import type {
+  BotRefDoc,
   ReplayOutline,
   ReplayStep,
   ReviewCoverage,
@@ -44,6 +45,10 @@ type TutorialStore = {
   stepIndex: number
   step: ReplayStep | null
   coverage: ReviewCoverage
+  /** Offline bot reference ("what would the bot have done"), per game. */
+  botRef: BotRefDoc | null
+  botRefLoading: boolean
+  botRefError: string | null
 
   /** Load outline + cached review for a game and jump to its first
    *  decision point (fall back to event 0 when there are none). */
@@ -55,6 +60,9 @@ type TutorialStore = {
   setCoverage: (coverage: ReviewCoverage) => void
   /** Generate (or re-generate) the LLM review for the open game. */
   generate: () => Promise<void>
+  /** Load (replaying the game through the bot if uncached) the bot
+   *  reference for the open game. */
+  loadBotRef: () => Promise<void>
 
   // --- in-game coach slice (M2, D-0008) ---
   coach: {
@@ -90,6 +98,9 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
   stepIndex: 0,
   step: null,
   coverage: loadCoverage(),
+  botRef: null,
+  botRefLoading: false,
+  botRefError: null,
 
   coach: {
     line: null,
@@ -128,14 +139,18 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
       generateError: null,
       step: null,
       stepIndex: 0,
+      botRef: null,
+      botRefLoading: false,
+      botRefError: null,
     })
     try {
-      const [outline, doc] = await Promise.all([
+      const [outline, doc, botRef] = await Promise.all([
         invoke<ReplayOutline | null>('tutorial_replay_outline', { gameId }),
         invoke<ReviewDoc | null>('tutorial_get_review', { gameId }),
+        invoke<BotRefDoc | null>('tutorial_get_bot_reference', { gameId }),
       ])
       const firstDecision = outline?.decisions[0]?.event_index ?? 0
-      set({ outline, doc })
+      set({ outline, doc, botRef })
       const step = await fetchStep(gameId, firstDecision)
       set({ stepIndex: firstDecision, step })
     } catch (e) {
@@ -152,6 +167,9 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
       generateError: null,
       step: null,
       stepIndex: 0,
+      botRef: null,
+      botRefLoading: false,
+      botRefError: null,
     }),
 
   setStepIndex: async (index) => {
@@ -180,6 +198,18 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
   setCoverage: (coverage) => {
     saveCoverage(coverage)
     set({ coverage })
+  },
+
+  loadBotRef: async () => {
+    const { gameId, botRefLoading } = get()
+    if (!gameId || botRefLoading) return
+    set({ botRefLoading: true, botRefError: null })
+    try {
+      const botRef = await invoke<BotRefDoc>('tutorial_bot_reference', { gameId })
+      set({ botRef, botRefLoading: false })
+    } catch (e) {
+      set({ botRefLoading: false, botRefError: String(e) })
+    }
   },
 
   generate: async () => {

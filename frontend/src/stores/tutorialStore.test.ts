@@ -37,6 +37,7 @@ describe('tutorialStore replay + review flow', () => {
     responses.clear()
     responses.set('tutorial_replay_outline', outline)
     responses.set('tutorial_get_review', null)
+    responses.set('tutorial_get_bot_reference', null)
     responses.set('tutorial_replay_step', step(2))
     const backing = new Map<string, string>()
     vi.stubGlobal('localStorage', {

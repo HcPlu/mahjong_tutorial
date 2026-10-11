@@ -28,6 +28,7 @@ use crate::tutorial::material::ReviewDoc;
 
 const REVIEWS_SUBDIR: &str = "reviews";
 const LIVE_SUBDIR: &str = "live";
+const BOTREF_SUBDIR: &str = "botrefs";
 
 pub struct TutorialStore {
     root: PathBuf,
@@ -36,13 +37,15 @@ pub struct TutorialStore {
 }
 
 impl TutorialStore {
-    /// Open (or create) the store at `root`, creating `reviews/` and
-    /// `live/` if missing.
+    /// Open (or create) the store at `root`, creating `reviews/`,
+    /// `live/` and `botrefs/` if missing.
     pub fn new(root: PathBuf) -> Result<Self> {
         fs::create_dir_all(root.join(REVIEWS_SUBDIR))
             .with_context(|| format!("failed to create tutorial dir {}", root.display()))?;
         fs::create_dir_all(root.join(LIVE_SUBDIR))
             .with_context(|| format!("failed to create tutorial live dir {}", root.display()))?;
+        fs::create_dir_all(root.join(BOTREF_SUBDIR))
+            .with_context(|| format!("failed to create tutorial botrefs dir {}", root.display()))?;
         Ok(Self {
             root,
             write_lock: Mutex::new(()),
@@ -136,6 +139,45 @@ impl TutorialStore {
     fn turn_path(&self, key: &str) -> Result<PathBuf> {
         validate_game_id(key)?;
         Ok(self.root.join(LIVE_SUBDIR).join(format!("{key}.json")))
+    }
+
+    // --- bot reference cache (offline replay, D-0012 M4-lite) ---
+
+    /// Persist a game's bot reference under `botrefs/<game_id>.json`.
+    pub fn save_botref(&self, doc: &crate::tutorial::material::BotRefDoc) -> Result<()> {
+        let _g = self
+            .write_lock
+            .lock()
+            .expect("tutorial write lock poisoned");
+        let path = self.botref_path(&doc.game_id)?;
+        let body = serde_json::to_string_pretty(doc).context("serialise BotRefDoc")?;
+        fs::write(&path, body).with_context(|| format!("failed to write {}", path.display()))?;
+        Ok(())
+    }
+
+    /// Load a cached bot reference. Corrupt cache is an error; absence
+    /// is `None`.
+    pub fn load_botref(
+        &self,
+        game_id: &str,
+    ) -> Result<Option<crate::tutorial::material::BotRefDoc>> {
+        let path = self.botref_path(game_id)?;
+        if !path.exists() {
+            return Ok(None);
+        }
+        let body = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let doc: crate::tutorial::material::BotRefDoc = serde_json::from_str(&body)
+            .with_context(|| format!("corrupt botref cache at {}", path.display()))?;
+        Ok(Some(doc))
+    }
+
+    fn botref_path(&self, game_id: &str) -> Result<PathBuf> {
+        validate_game_id(game_id)?;
+        Ok(self
+            .root
+            .join(BOTREF_SUBDIR)
+            .join(format!("{game_id}.json")))
     }
 }
 

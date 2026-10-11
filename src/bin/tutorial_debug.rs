@@ -30,6 +30,7 @@ async fn main() {
     let mut refresh = false;
     let mut json = false;
     let mut inspect: Option<u32> = None;
+    let mut botref = false;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -43,6 +44,7 @@ async fn main() {
                 }
             }
             "--refresh" => refresh = true,
+            "--botref" => botref = true,
             "--json" => json = true,
             "--inspect" => {
                 inspect = match args.next().map(|v| v.parse::<u32>()) {
@@ -151,6 +153,47 @@ async fn main() {
     }
 
     // Network path from here on — gate before the first request.
+    if botref {
+        let runtime = akagi::bot::PythonRuntime::locate(None)
+            .ok()
+            .unwrap_or_else(|| usage("no Python runtime found for the bot replay"));
+        let doc = akagi::ipc::tutorial_botref::generate_bot_reference(
+            &cfg,
+            Some(runtime),
+            &store,
+            &history,
+            &record.id,
+            akagi::event_bus::notify_bus(),
+        )
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("bot reference failed: {e:#}");
+            std::process::exit(1);
+        });
+        println!(
+            "# bot {} — {} turns (created {})",
+            doc.bot,
+            doc.turns.len(),
+            doc.created_at
+        );
+        for t in doc.turns.iter().take(12) {
+            println!(
+                "  junme {:>2} {} | {}",
+                t.junme,
+                t.action,
+                t.picks
+                    .iter()
+                    .map(|p| format!("{} {:.0}%", p.tile, p.prob * 100.0))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        if doc.turns.len() > 12 {
+            println!("  … {} more", doc.turns.len() - 12);
+        }
+        return;
+    }
+
     if !cfg.tutorial.outbound_allowed() {
         eprintln!(
             "outbound not allowed: enabled={} consent={} llm_configured={} \
@@ -225,7 +268,7 @@ async fn main() {
 fn usage(msg: &str) -> ! {
     eprintln!("{msg}");
     eprintln!(
-        "usage: tutorial-debug [--game <ulid|latest>] [--coverage key|all] [--refresh] [--json]"
+        "usage: tutorial-debug [--game <ulid|latest>] [--coverage key|all] [--refresh] [--json] [--inspect <junme>] [--botref]"
     );
     std::process::exit(2)
 }

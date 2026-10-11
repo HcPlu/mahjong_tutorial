@@ -52,3 +52,27 @@ export type ReplayStep = {
   mahgen: MahgenView
   analysis: AnalysisResult | null
 }
+
+// --- Bot reference (offline replay, D-0012 M4-lite) ---
+
+export type BotRefPick = {
+  /** Mjai tile string (e.g. '5s'). */
+  tile: string
+  label: string
+  /** Bot policy probability, 0..1. */
+  prob: number
+}
+
+export type BotRefTurn = {
+  junme: number
+  /** Bot action label ('dahai:5s', 'reach', 'none', ...). */
+  action: string
+  picks: BotRefPick[]
+}
+
+export type BotRefDoc = {
+  game_id: string
+  bot: string
+  created_at: string
+  turns: BotRefTurn[]
+}

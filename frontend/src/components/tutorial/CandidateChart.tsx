@@ -11,17 +11,20 @@ import { useTranslation } from 'react-i18next'
 
 import { Mahgen } from '@/components/Mahgen'
 import { mjaiToMahgen, tileIdx } from '@/lib/tileIdx'
+import type { BotRefPick } from '@/components/tutorial/types'
 import type { AnalysisResult, DiscardCandidate } from '@/types'
 
 type Props = {
   analysis: AnalysisResult
   /** The student's actual discard this turn (mjai tile), when known. */
   actual: string | null
+  /** Bot probabilities for this turn (offline replay), when generated. */
+  botPicks?: BotRefPick[] | null
 }
 
 const MAX_ROWS = 5
 
-export function CandidateChart({ analysis, actual }: Props) {
+export function CandidateChart({ analysis, actual, botPicks }: Props) {
   const maintain = analysis.hand14?.maintain?.slice(0, MAX_ROWS) ?? []
   if (maintain.length === 0) return null
   const best = analysis.best_attack_discard
@@ -43,6 +46,8 @@ export function CandidateChart({ analysis, actual }: Props) {
           riskLive={riskLive}
           isActual={actual !== null && c.discard === actual}
           isBest={best !== null && c.discard === best}
+          botProb={botPicks?.find((p) => p.tile === c.discard)?.prob ?? null}
+          isBotTop={botPicks != null && botPicks.length > 0 && botPicks[0].tile === c.discard}
         />
       ))}
     </div>
@@ -56,6 +61,8 @@ function CandidateRow({
   riskLive,
   isActual,
   isBest,
+  botProb,
+  isBotTop,
 }: {
   cand: DiscardCandidate
   /** Deal-in risk for the discarded tile, 0..1 (mixed risk / 100). */
@@ -64,6 +71,9 @@ function CandidateRow({
   riskLive: boolean
   isActual: boolean
   isBest: boolean
+  /** Bot's probability for this exact tile, when a reference exists. */
+  botProb: number | null
+  isBotTop: boolean
 }) {
   const { t } = useTranslation()
   const r = cand.result
@@ -112,6 +122,11 @@ function CandidateRow({
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
+        {botProb !== null && (
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+            {t('tutorial.bot_prob', { p: Math.round(botProb * 100) })}
+          </span>
+        )}
         {isActual && (
           <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
             {t('tutorial.actual_pick')}
@@ -120,6 +135,11 @@ function CandidateRow({
         {isBest && (
           <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
             {t('tutorial.engine_best')}
+          </span>
+        )}
+        {isBotTop && (
+          <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+            {t('tutorial.bot_pick')}
           </span>
         )}
       </div>

@@ -7,6 +7,7 @@ import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import {
+  Bot,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -122,6 +123,22 @@ export function Replay({ gameId, onExit }: Props) {
                 </SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={st.botRefLoading}
+              onClick={() => void st.loadBotRef()}
+              title={t('tutorial.bot_ref_hint')}
+            >
+              {st.botRefLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Bot className="h-3.5 w-3.5" />
+              )}
+              {st.botRef
+                ? t('tutorial.bot_ref_done', { bot: st.botRef.bot })
+                : t('tutorial.bot_ref')}
+            </Button>
             {st.doc ? (
               <Button
                 size="sm"
@@ -180,6 +197,9 @@ export function Replay({ gameId, onExit }: Props) {
           )}
           {st.generateError && (
             <p className="text-sm text-red-500">{st.generateError}</p>
+          )}
+          {st.botRefError && (
+            <p className="text-sm text-red-500">{st.botRefError}</p>
           )}
         </CardContent>
       </Card>
@@ -268,6 +288,11 @@ export function Replay({ gameId, onExit }: Props) {
                   <CandidateChart
                     analysis={step.analysis}
                     actual={currentDecision?.actual ?? null}
+                    botPicks={
+                      currentDecision
+                        ? st.botRef?.turns.find((x) => x.junme === currentDecision.junme)?.picks ?? null
+                        : null
+                    }
                   />
                 </CardContent>
               </Card>

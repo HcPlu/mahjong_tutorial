@@ -63,6 +63,25 @@ describe('CandidateChart', () => {
     expect(screen.getByText('tutorial.engine_best')).toBeTruthy()
   })
 
+  it('shows bot probabilities and the bot-top badge when a reference exists', () => {
+    const a = analysis([
+      cand('P', { waits_total: 53, mixed_waits_score: 88.8 }),
+      cand('C', { waits_total: 53, mixed_waits_score: 88.8 }),
+    ])
+    render(
+      <CandidateChart
+        analysis={a}
+        actual={null}
+        botPicks={[
+          { tile: 'C', label: 'Discard', prob: 0.55 },
+          { tile: 'P', label: 'Discard', prob: 0.3 },
+        ]}
+      />,
+    )
+    expect(screen.getAllByText('tutorial.bot_prob').length).toBe(2) // both rows carry a bot prob
+    expect(screen.getAllByText('tutorial.bot_pick').length).toBe(1) // C only
+  })
+
   it('renders live metrics as percentages when the turn has signal', () => {
     const a = analysis(
       [

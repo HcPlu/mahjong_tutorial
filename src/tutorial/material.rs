@@ -184,6 +184,42 @@ pub struct LiveTurnDoc {
     pub created_at: String,
 }
 
+/// One bot-recommended tile with its policy probability (offline
+/// replay, `crate::bot::replay`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BotRefPick {
+    /// Mjai tile string (e.g. "5s").
+    pub tile: String,
+    pub label: String,
+    pub prob: f64,
+}
+
+/// The bot reference for one of our decision points.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BotRefTurn {
+    pub junme: u32,
+    /// The bot's action, mjai-style label (`dahai:5s`, `reach`, ...).
+    pub action: String,
+    pub picks: Vec<BotRefPick>,
+}
+
+/// Persisted bot-reference artifact for one game ("what would the bot
+/// have done at each of my decisions"), written under
+/// `<root>/botrefs/<game_id>.json`. Numbers come from the bot's own
+/// policy — narrated by the LLM only as-is, never recomputed.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BotRefDoc {
+    pub game_id: String,
+    /// Bot name (e.g. "mortal").
+    pub bot: String,
+    /// RFC 3339 UTC.
+    pub created_at: String,
+    pub turns: Vec<BotRefTurn>,
+}
+
 // Manual on purpose: `num_players` defaults to 4-player mahjong, not
 // `u8::default()` — the only field here whose default is semantic.
 impl Default for ReviewMaterial {

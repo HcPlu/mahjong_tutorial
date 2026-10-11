@@ -1558,8 +1558,8 @@ pub async fn tutorial_explain_live(state: State<'_, AppState>) -> CmdResult<Turn
         })
         .await
         .map_err(|e| format!("LLM request failed: {e:#}"))?;
-    let doc = crate::tutorial::parse_turn_doc(&resp.content, &turn.material)
-        .map_err(|e| format!("LLM reply rejected by validation: {e:#}"))?;
+    let doc = crate::tutorial::download::parse_turn_doc_trust(&resp.content, &turn.material)
+        .map_err(|e| format!("LLM reply was not keepable JSON: {e:#}"))?;
 
     let live_doc = crate::tutorial::LiveTurnDoc {
         key,
@@ -1573,6 +1573,43 @@ pub async fn tutorial_explain_live(state: State<'_, AppState>) -> CmdResult<Turn
         .map_err(|e| format!("tutorial live save join error: {e}"))?
         .map_err(|e| format!("{e:#}"))?;
     Ok(doc)
+}
+
+/// Bot reference for a replayed game: what the configured subprocess
+/// bot (e.g. mortal) would have done at each of our decision points,
+/// with its candidate probabilities (fork-only, D-0012 M4-lite).
+/// Cache-first — the replay is one bot inference per decision point and
+/// runs once per game. Pure local compute; no LLM, no consent gate.
+#[tauri::command]
+pub async fn tutorial_bot_reference(
+    game_id: String,
+    state: State<'_, AppState>,
+) -> CmdResult<crate::tutorial::material::BotRefDoc> {
+    let cfg = state.config.read().await.clone();
+    let history = state.history_store.clone();
+    let ctx = state.tutorial.clone();
+    let runtime = state.runtime.clone();
+    let notify = state.notify_bus.clone();
+    crate::ipc::tutorial_botref::generate_bot_reference(
+        &cfg, runtime, &ctx.store, &history, &game_id, notify,
+    )
+    .await
+    .map_err(|e| format!("{e:#}"))
+}
+
+/// Read-only bot-reference cache check (`botrefs/<ulid>.json`). `None`
+/// when the game has not been replayed through the bot yet — callers
+/// that want the reference run `tutorial_bot_reference` instead.
+#[tauri::command]
+pub async fn tutorial_get_bot_reference(
+    game_id: String,
+    state: State<'_, AppState>,
+) -> CmdResult<Option<crate::tutorial::material::BotRefDoc>> {
+    let ctx = state.tutorial.clone();
+    tokio::task::spawn_blocking(move || ctx.store.load_botref(&game_id))
+        .await
+        .map_err(|e| format!("tutorial botref get join error: {e}"))?
+        .map_err(|e| format!("{e:#}"))
 }
 
 /// `shinkuan/Akagi` is the canonical upstream — kept here as a const
@@ -2047,6 +2084,8 @@ macro_rules! ipc_handlers {
             $crate::ipc::commands::tutorial_generate_review,
             $crate::ipc::commands::tutorial_delete_review,
             $crate::ipc::commands::tutorial_explain_live,
+            $crate::ipc::commands::tutorial_bot_reference,
+            $crate::ipc::commands::tutorial_get_bot_reference,
         ]
     };
 }

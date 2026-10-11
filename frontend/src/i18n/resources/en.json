@@ -231,7 +231,12 @@
     "explanation": "Coaching",
     "explanation_missing": "No explanation for this turn under the current coverage — switch to All turns or regenerate.",
     "explanation_need_generate": "Generate the coaching to see the AI explanation for this turn.",
-    "score": "Score"
+    "score": "Score",
+    "bot_ref": "Bot reference",
+    "bot_ref_hint": "Replay this game through the configured bot (mortal) offline and show its probabilities per candidate",
+    "bot_ref_done": "{{bot}} ✓",
+    "bot_prob": "Bot {{p}}%",
+    "bot_pick": "Bot top"
   },
   "coach": {
     "disabled": "Coach is off — enable it in Settings → AI Tutorial.",
