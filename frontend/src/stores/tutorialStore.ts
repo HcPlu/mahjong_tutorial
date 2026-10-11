@@ -49,6 +49,10 @@ type TutorialStore = {
   botRef: BotRefDoc | null
   botRefLoading: boolean
   botRefError: string | null
+  /** Bot answers recorded while the game was being played (D-0017) —
+   *  the bot that actually drove the game, which may differ from the
+   *  regenerated `botRef`'s bot. Read-only cache; never regenerated. */
+  liveBot: BotRefDoc | null
 
   /** Load outline + cached review for a game and jump to its first
    *  decision point (fall back to event 0 when there are none). */
@@ -115,6 +119,7 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
   botRef: null,
   botRefLoading: false,
   botRefError: null,
+  liveBot: null,
 
   coach: {
     line: null,
@@ -172,15 +177,17 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
       botRef: null,
       botRefLoading: false,
       botRefError: null,
+      liveBot: null,
     })
     try {
-      const [outline, doc, botRef] = await Promise.all([
+      const [outline, doc, botRef, liveBot] = await Promise.all([
         invoke<ReplayOutline | null>('tutorial_replay_outline', { gameId }),
         invoke<ReviewDoc | null>('tutorial_get_review', { gameId }),
         invoke<BotRefDoc | null>('tutorial_get_bot_reference', { gameId }),
+        invoke<BotRefDoc | null>('tutorial_get_live_bot', { gameId }),
       ])
       const firstDecision = outline?.decisions[0]?.event_index ?? 0
-      set({ outline, doc, botRef })
+      set({ outline, doc, botRef, liveBot })
       const step = await fetchStep(gameId, firstDecision)
       set({ stepIndex: firstDecision, step })
     } catch (e) {
@@ -200,6 +207,7 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
       botRef: null,
       botRefLoading: false,
       botRefError: null,
+      liveBot: null,
     }),
 
   setStepIndex: async (index) => {

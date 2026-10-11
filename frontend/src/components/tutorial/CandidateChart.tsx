@@ -20,11 +20,15 @@ type Props = {
   actual: string | null
   /** Bot reference for this turn (offline replay), when generated. */
   botTurn?: BotRefTurn | null
+  /** Bot answers recorded while the game was played (D-0017), when the
+   *  game ran with a bot. Same shape as `botTurn` — the point is that
+   *  the two bots may differ. */
+  liveTurn?: BotRefTurn | null
 }
 
 const MAX_ROWS = 5
 
-export function CandidateChart({ analysis, actual, botTurn }: Props) {
+export function CandidateChart({ analysis, actual, botTurn, liveTurn }: Props) {
   const maintain = analysis.hand14?.maintain?.slice(0, MAX_ROWS) ?? []
   if (maintain.length === 0) return null
   const best = analysis.best_attack_discard
@@ -35,19 +39,24 @@ export function CandidateChart({ analysis, actual, botTurn }: Props) {
   const winLive = maintain.some((c) => c.result.avg_agari_rate > 0)
   const riskLive = risks.some((r) => (r ?? 0) > 0)
   const picks = botTurn?.picks ?? null
+  const livePicks = liveTurn?.picks ?? null
+  // With two bot sources in play the percentages get source prefixes
+  // ("复盘/对局"); with one, the bare label reads cleaner.
+  const dual = picks != null && livePicks != null
   // A rule-forced turn has no distribution; the forced tile rides only
   // in the action label ("dahai:5s").
-  const forcedTile =
-    botTurn?.source === 'rule_forced' && botTurn.action.startsWith('dahai:')
-      ? botTurn.action.slice('dahai:'.length)
-      : null
+  const forcedTile = forcedDiscard(botTurn)
+  const liveForcedTile = forcedDiscard(liveTurn)
 
   return (
     <div className="space-y-1.5">
-      <SourceBadge source={botTurn?.source ?? null} />
+      <div className="flex justify-end gap-1">
+        <SourceBadge source={botTurn?.source ?? null} />
+        <SourceBadge source={liveTurn?.source ?? null} live />
+      </div>
       {maintain.map((c, i) => {
         const botPick = picks?.find((p) => p.tile === c.discard) ?? null
-        const isBotChosen = botPick?.chosen === true || forcedTile === c.discard
+        const livePick = livePicks?.find((p) => p.tile === c.discard) ?? null
         return (
           <CandidateRow
             key={c.discard}
@@ -59,7 +68,13 @@ export function CandidateChart({ analysis, actual, botTurn }: Props) {
             isBest={best !== null && c.discard === best}
             botProb={botPick?.prob ?? null}
             isBotTop={picks != null && picks.length > 0 && picks[0].tile === c.discard}
-            isBotChosen={isBotChosen}
+            isBotChosen={botPick?.chosen === true || forcedTile === c.discard}
+            liveProb={livePick?.prob ?? null}
+            isLiveTop={
+              livePicks != null && livePicks.length > 0 && livePicks[0].tile === c.discard
+            }
+            isLiveChosen={livePick?.chosen === true || liveForcedTile === c.discard}
+            dual={dual}
           />
         )
       })}
@@ -67,23 +82,32 @@ export function CandidateChart({ analysis, actual, botTurn }: Props) {
   )
 }
 
+/** A rule-forced turn has no distribution, so the forced tile rides
+ *  only in the action label ("dahai:5s"). */
+function forcedDiscard(turn: BotRefTurn | null | undefined): string | null {
+  return turn?.source === 'rule_forced' && turn.action.startsWith('dahai:')
+    ? turn.action.slice('dahai:'.length)
+    : null
+}
+
 /** Turn-level provenance of the bot's answer — the whole point is that
- *  a rule fast path carries no probability distribution to trust. */
-function SourceBadge({ source }: { source: BotRefSource | null }) {
+ *  a rule fast path carries no probability distribution to trust. The
+ *  live recorder's badge is tinted cyan and worded "对局/…" to keep the
+ *  two bots apart. */
+function SourceBadge({ source, live }: { source: BotRefSource | null; live?: boolean }) {
   const { t } = useTranslation()
   if (source == null || source === 'no_answer') return null
   const style =
     source === 'model'
-      ? 'border-border text-muted-foreground'
+      ? live
+        ? 'border-sky-500/40 text-sky-600 dark:text-sky-400'
+        : 'border-border text-muted-foreground'
       : source === 'rule_forced'
         ? 'border-amber-500/40 text-amber-600 dark:text-amber-400'
         : 'border-red-500/40 text-red-600 dark:text-red-400'
+  const key = live ? `tutorial.live_bot_source_${source}` : `tutorial.bot_source_${source}`
   return (
-    <div className="flex justify-end">
-      <span className={'rounded border px-1.5 py-0.5 text-[10px] ' + style}>
-        {t(`tutorial.bot_source_${source}`)}
-      </span>
-    </div>
+    <span className={'rounded border px-1.5 py-0.5 text-[10px] ' + style}>{t(key)}</span>
   )
 }
 
@@ -97,6 +121,10 @@ function CandidateRow({
   botProb,
   isBotTop,
   isBotChosen,
+  liveProb,
+  isLiveTop,
+  isLiveChosen,
+  dual,
 }: {
   cand: DiscardCandidate
   /** Deal-in risk for the discarded tile, 0..1 (mixed risk / 100). */
@@ -111,6 +139,12 @@ function CandidateRow({
   /** The action the bot actually played this turn (model pick, guard
    *  override, or rule-forced discard). */
   isBotChosen: boolean
+  /** Same trio for the bot recorded during the game (D-0017). */
+  liveProb: number | null
+  isLiveTop: boolean
+  isLiveChosen: boolean
+  /** Both bot sources present — percentages get source prefixes. */
+  dual: boolean
 }) {
   const { t } = useTranslation()
   const r = cand.result
@@ -163,10 +197,26 @@ function CandidateRow({
           <span
             className={
               'font-mono text-[10px] tabular-nums ' +
-              (isBotChosen ? 'font-semibold text-violet-600 dark:text-violet-400' : 'text-muted-foreground')
+              (isBotChosen
+                ? 'font-semibold text-violet-600 dark:text-violet-400'
+                : 'text-muted-foreground')
             }
           >
-            {t('tutorial.bot_prob', { p: Math.round(botProb * 100) })}
+            {dual
+              ? t('tutorial.replay_bot_prob', { p: Math.round(botProb * 100) })
+              : t('tutorial.bot_prob', { p: Math.round(botProb * 100) })}
+          </span>
+        )}
+        {liveProb !== null && (
+          <span
+            className={
+              'font-mono text-[10px] tabular-nums ' +
+              (isLiveChosen
+                ? 'font-semibold text-sky-600 dark:text-sky-400'
+                : 'text-muted-foreground')
+            }
+          >
+            {t('tutorial.live_bot_prob', { p: Math.round(liveProb * 100) })}
           </span>
         )}
         {isActual && (
@@ -178,6 +228,17 @@ function CandidateRow({
           <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
             {t('tutorial.engine_best')}
           </span>
+        )}
+        {isLiveChosen ? (
+          <span className="rounded bg-sky-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            {t('tutorial.live_bot_chosen')}
+          </span>
+        ) : (
+          isLiveTop && (
+            <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-600 dark:text-sky-400">
+              {t('tutorial.live_bot_pick')}
+            </span>
+          )
         )}
         {isBotChosen ? (
           <span className="rounded bg-violet-600 px-1.5 py-0.5 text-[10px] font-medium text-white">

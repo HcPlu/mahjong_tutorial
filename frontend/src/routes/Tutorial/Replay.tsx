@@ -305,12 +305,22 @@ export function Replay({ gameId, onExit }: Props) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {st.liveBot && (
+                    <p className="mb-2 text-[11px] text-muted-foreground">
+                      {t('tutorial.live_bot_note', { bot: st.liveBot.bot })}
+                    </p>
+                  )}
                   <CandidateChart
                     analysis={step.analysis}
                     actual={currentDecision?.actual ?? null}
                     botTurn={
                       currentDecision
                         ? st.botRef?.turns.find((x) => x.junme === currentDecision.junme) ?? null
+                        : null
+                    }
+                    liveTurn={
+                      currentDecision
+                        ? st.liveBot?.turns.find((x) => x.junme === currentDecision.junme) ?? null
                         : null
                     }
                   />

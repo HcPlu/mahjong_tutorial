@@ -149,4 +149,64 @@ describe('CandidateChart', () => {
     // Live dimensions never render the dead dash.
     expect(screen.queryByText('—')).toBeNull()
   })
+
+  describe('dual bot sources (D-0017)', () => {
+    const a = analysis([
+      cand('5s', { waits_total: 53, mixed_waits_score: 88.8 }),
+      cand('1z', { waits_total: 42, mixed_waits_score: 80.1 }),
+    ])
+
+    it('renders both bots with source-prefixed labels when both answered', () => {
+      render(
+        <CandidateChart
+          analysis={a}
+          actual={null}
+          botTurn={{
+            junme: 3,
+            action: 'dahai:5s',
+            source: 'model',
+            picks: [
+              { tile: '5s', label: 'Discard', prob: 0.9, chosen: true },
+              { tile: '1z', label: 'Discard', prob: 0.1 },
+            ],
+          }}
+          liveTurn={{
+            junme: 3,
+            action: 'dahai:1z',
+            source: 'model',
+            picks: [
+              { tile: '1z', label: 'Discard', prob: 0.7, chosen: true },
+              { tile: '5s', label: 'Discard', prob: 0.3 },
+            ],
+          }}
+        />,
+      )
+      // Dual mode swaps the bare label for source-prefixed ones.
+      expect(screen.getAllByText('tutorial.replay_bot_prob').length).toBe(2)
+      expect(screen.getAllByText('tutorial.live_bot_prob').length).toBe(2)
+      expect(screen.queryByText('tutorial.bot_prob')).toBeNull()
+      // Both bots' played badges, and both provenance badges.
+      expect(screen.getAllByText('tutorial.bot_chosen').length).toBe(1)
+      expect(screen.getAllByText('tutorial.live_bot_chosen').length).toBe(1)
+      expect(screen.getByText('tutorial.bot_source_model')).toBeTruthy()
+      expect(screen.getByText('tutorial.live_bot_source_model')).toBeTruthy()
+    })
+
+    it('keeps the bare label and hides live rows without a live recording', () => {
+      render(
+        <CandidateChart
+          analysis={a}
+          actual={null}
+          botTurn={{
+            junme: 3,
+            action: 'dahai:5s',
+            source: 'model',
+            picks: [{ tile: '5s', label: 'Discard', prob: 0.9, chosen: true }],
+          }}
+        />,
+      )
+      expect(screen.getAllByText('tutorial.bot_prob').length).toBe(1)
+      expect(screen.queryByText(/live_bot/)).toBeNull()
+    })
+  })
 })
