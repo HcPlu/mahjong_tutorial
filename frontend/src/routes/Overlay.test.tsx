@@ -161,6 +161,12 @@ describe('Overlay explain panel', () => {
     expect(screen.getByText('推进手牌')).toBeTruthy()
     expect(screen.getByText('切五索推进向听，保留安全余裕。')).toBeTruthy()
     expect(screen.queryByTestId('overlay-explain-pending')).toBeNull()
+
+    // The next decision retires the shown doc back to the pending state —
+    // a stale explanation must not mask the "generating…" indicator.
+    capturedListener('bot-response')({ meta: {} })
+    await waitFor(() => expect(screen.queryByTestId('overlay-explain-doc')).toBeNull())
+    expect(screen.getByTestId('overlay-explain-pending')).toBeTruthy()
   })
 
   it('applies the explain toggle through set_coach_auto', async () => {

@@ -115,6 +115,12 @@ export function useTauriBridge() {
         coachThrottle.reset()
         useTutorialStore.getState().coachReset()
       }
+      // Fresh hand: the previous hand's auto explanation is stale history
+      // (junme and the cache key restart per hand on the backend).
+      if (e.type === 'start_kyoku') {
+        llmDrawAt = null
+        useTutorialStore.getState().coachNewHand()
+      }
       useNotifyStore.getState().pushEvent(e)
       void refreshGame()
     }).then((u) => unlistens.push(u))

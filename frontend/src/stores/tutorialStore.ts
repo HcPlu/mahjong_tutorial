@@ -117,6 +117,9 @@ type TutorialStore = {
   /** New draw while auto mode is on: retire the previous turn's doc and
    *  mark the new one as pending. */
   coachAutoTurnStart: () => void
+  /** New hand: the previous hand's auto explanation is history (the line,
+   *  mute and manual deep dive survive). */
+  coachNewHand: () => void
   /** `tutorial-live-turn` arrived: publish it. */
   setAutoDoc: (doc: TurnDoc) => void
 
@@ -175,6 +178,9 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
 
   coachAutoTurnStart: () =>
     set((s) => ({ coach: { ...s.coach, autoDoc: null, autoPending: true } })),
+
+  coachNewHand: () =>
+    set((s) => ({ coach: { ...s.coach, autoDoc: null, autoPending: false } })),
 
   setAutoDoc: (doc) =>
     set((s) => ({ coach: { ...s.coach, autoDoc: doc, autoPending: false } })),

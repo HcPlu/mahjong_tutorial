@@ -142,6 +142,15 @@ pub async fn drive_loop(
                         MjaiEvent::EndGame { .. } => {
                             flush_botlive(&ctx, &mut botlive);
                         }
+                        MjaiEvent::StartKyoku { .. } => {
+                            // junme is per-hand (the engine and the replay
+                            // assembler count it that way), and the turn
+                            // cache key must be too: hand 1's t3 and hand
+                            // 2's t3 would otherwise collide and replay the
+                            // stale explanation for the whole next hand.
+                            our_draws = 0;
+                            session_key = new_session_key(seat);
+                        }
                         MjaiEvent::Tsumo { actor, .. } if Some(*actor) == seat => {
                             our_draws += 1;
                         }
@@ -811,6 +820,27 @@ mod tests {
             job.session_key.ends_with("-0"),
             "session key carries the seat: {}",
             job.session_key
+        );
+
+        // A new hand restarts junme and rotates the session key, so hand 2's
+        // turns get fresh cache keys instead of replaying hand 1's docs.
+        // (The key's timestamp has second resolution, so cross the second
+        // boundary first — real hands are minutes apart, tests are not.)
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+        for ev in [&start_kyoku, &tsumo_e] {
+            tracker.lock().await.handle(ev).expect("re-feed tracker");
+            post_tx.send(tracked(ev.clone())).unwrap();
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        bot_tx.send(bot_dahai("E", None)).unwrap();
+        let job2 = tokio::time::timeout(std::time::Duration::from_secs(2), auto_rx.recv())
+            .await
+            .expect("second job queued in time")
+            .expect("channel alive");
+        assert_eq!(job2.material.junme, 1, "junme resets at StartKyoku");
+        assert_ne!(
+            job2.session_key, job.session_key,
+            "session key rotates at StartKyoku (per-hand cache keys)"
         );
 
         task.abort();

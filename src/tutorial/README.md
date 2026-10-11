@@ -190,7 +190,9 @@ auto_policy = "off"                   # off=仅手动深讲按钮；all=每次�
   - `upload::build_turn_messages` / `download::parse_turn_doc` /
     `store::{save_turn_doc, load_turn_doc}`（`live/<key>.json`，
     `LiveTurnDoc` 包装；键 = `session_key + "-t" + junme`，
-    `session_key` = 本地时间戳+座位，字符集过 `validate_game_id`）。
+    `session_key` = 本地时间戳+座位，**每个 `StartKyoku` 轮换**（junme
+    按局清零，键随局轮换——否则第二局的 t3 会命中第一局的缓存），
+    字符集过 `validate_game_id`）。
   - IPC `tutorial_explain_live`：缓存→consent→三区，失败降级 toast。
   - **自动模式（D-0016，「摸牌时抢先」）**：`coach.enabled &&
     auto_policy = "all"` 时 `drive_loop` 把当巡素材投进 `mpsc(4)`，

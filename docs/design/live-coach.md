@@ -106,7 +106,7 @@ tutorial_explain_live()
 
 ### 4.3 缓存键（已知妥协）
 
-live 阶段对局还没有 history ULID（ULID 在对局结束落盘时才定）。v1 缓存键 = `session_key + "-t" + junme`，其中 `session_key` 为对局开始时的本地时间戳（`YYYYMMDD-HHMMSS`）+ 座位。落盘在 `<root>/live/` 下，id 过 `store.rs::validate_game_id`。M1 流水线落地时若能让 history 提前分配对局 id，则切换为 ULID 键；旧缓存直接作废（量小，无迁移价值）。`TutorialStore` 增 `save_turn_doc` / `load_turn_doc` 两个方法，写路径仍走单 mutex。
+live 阶段对局还没有 history ULID（ULID 在对局结束落盘时才定）。v1 缓存键 = `session_key + "-t" + junme`，其中 `session_key` 为本地时间戳（`YYYYMMDD-HHMMSS`）+ 座位，**`StartGame` 与每个 `StartKyoku` 都会轮换、junme 按局清零**（否则第二局与第一局同巡号撞缓存、讲解整局不更新）。落盘在 `<root>/live/` 下，id 过 `store.rs::validate_game_id`。M1 流水线落地时若能让 history 提前分配对局 id，则切换为 ULID 键；旧缓存直接作废（量小，无迁移价值）。`TutorialStore` 增 `save_turn_doc` / `load_turn_doc` 两个方法，写路径仍走单 mutex。
 
 ### 4.4 自动模式（D-0016，摸牌时抢先生成）
 

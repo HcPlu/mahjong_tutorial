@@ -27,22 +27,38 @@ export function LlmLogTile({ bp }: { bp: Breakpoint }) {
       ) : (
         <div className="h-full overflow-y-auto px-2 py-1 text-xs leading-relaxed">
           {entries.map((e) => (
-            <div key={e.id} className="border-b border-border/50 py-1 last:border-0">
-              <div className="flex flex-wrap items-center gap-x-2 text-muted-foreground">
-                <span className="font-mono">{fmtTime(e.ts)}</span>
+            <div key={e.id} className="space-y-px border-b border-border/50 py-1 last:border-0">
+              <div className="flex flex-wrap items-center gap-x-2">
+                <span className="font-mono text-muted-foreground">{fmtTime(e.ts)}</span>
                 {e.junme != null && (
-                  <span>{t('overlay.explain_turn', { junme: e.junme })}</span>
+                  <span className="font-semibold text-violet-400">
+                    {t('overlay.explain_turn', { junme: e.junme })}
+                  </span>
                 )}
-                <span>{e.source === 'auto' ? t('tutorial.llm_log_auto') : t('tutorial.llm_log_manual')}</span>
-                {e.latencyMs != null && <span>{(e.latencyMs / 1000).toFixed(1)}s</span>}
-                {e.model && <span className="truncate">{e.model}</span>}
+                <span
+                  className={
+                    e.source === 'auto'
+                      ? 'rounded bg-violet-500/15 px-1 text-[10px] font-medium text-violet-400'
+                      : 'rounded bg-muted px-1 text-[10px] text-muted-foreground'
+                  }
+                >
+                  {e.source === 'auto'
+                    ? t('tutorial.llm_log_auto')
+                    : t('tutorial.llm_log_manual')}
+                </span>
+                {e.latencyMs != null && (
+                  <span className="font-semibold text-foreground">
+                    {(e.latencyMs / 1000).toFixed(1)}s
+                  </span>
+                )}
+                {e.model && <span className="truncate text-muted-foreground">{e.model}</span>}
               </div>
               {e.ok ? (
                 e.headline && (
-                  <p className="truncate text-foreground">{tileNamesZh(e.headline)}</p>
+                  <p className="truncate font-medium text-foreground">{tileNamesZh(e.headline)}</p>
                 )
               ) : (
-                <p className="truncate text-destructive">{e.error}</p>
+                <p className="truncate font-medium text-destructive">{e.error}</p>
               )}
             </div>
           ))}

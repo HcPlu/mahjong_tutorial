@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { X } from 'lucide-react'
+import { Loader2, Sparkles, X } from 'lucide-react'
 import { BotShowList } from '@/components/BotShowList'
 import { getTutorialConfig, outboundAllowed } from '@/components/tutorial/configGate'
 import { tileNamesZh } from '@/components/tutorial/tileText'
 import type { TutorialLiveEvent, TurnDoc } from '@/components/tutorial/types'
 import { pickShow, visibleItems } from '@/lib/botShow'
 import { invoke, listen } from '@/lib/tauri'
-import type { AppConfig, BotResponse, OverlayConfig, ShowMeta } from '@/types'
+import type { AppConfig, BotResponse, MjaiEvent, OverlayConfig, ShowMeta } from '@/types'
 
 // The always-on-top overlay window's entire UI. Mounted by main.tsx instead of
 // the router when the window label is `overlay` — no sidebar, no statusbar, no
@@ -67,9 +67,19 @@ export function Overlay() {
       // Responses without a `show` block (e.g. a bare `none`) must not wipe
       // the last real suggestion off the screen.
       if (s) setShow(s)
-      // A bot reply marks a fresh decision point: with auto explanations
-      // on, this draw's generation is now in flight.
+      // A bot reply marks a fresh decision point: retire the previous
+      // turn's explanation first — otherwise the stale doc masks the
+      // pending state and the panel looks like it never refreshes.
+      setAutoDoc(null)
       setAutoPending(true)
+    }).then((u) => unlistens.push(u))
+
+    // New hand / new game: the previous hand's explanation is history.
+    listen<MjaiEvent>('mjai-event', (e) => {
+      if (e.type === 'start_kyoku' || e.type === 'start_game') {
+        setAutoDoc(null)
+        setAutoPending(false)
+      }
     }).then((u) => unlistens.push(u))
 
     // Auto-generated live explanation arrived (fork): rendered under the
@@ -212,25 +222,26 @@ export function Overlay() {
         </div>
 
         {/* Auto-explanation panel (fork, D-0018): the latest LLM deep-dive
-            for the current decision, UNDER the suggestions — the top-N list
-            stays the first thing at a glance. shrink-0 so the list above
-            gives up the height, not the window. */}
+            for the current decision, UNDER the suggestions. Violet-accented
+            so it reads as the teaching content, not chrome. shrink-0 so the
+            list above gives up the height, not the window. */}
         {coachAuto && (
           <div
-            className="shrink-0 border-t border-border px-2 pt-1 pb-1.5"
+            className="shrink-0 border-t-2 border-violet-500/40 bg-violet-500/10 px-2 pt-1 pb-1.5"
             data-testid="overlay-explain-panel"
           >
             {autoDoc ? (
               <div data-testid="overlay-explain-doc">
-                <p className="text-[10px] font-medium text-muted-foreground">
+                <p className="flex items-center gap-1 text-[10px] font-semibold text-violet-400">
+                  <Sparkles className="size-3 shrink-0" />
                   {t('overlay.explain_turn', { junme: autoDoc.junme })}
                 </p>
                 {autoDoc.headline && (
-                  <p className="text-[11px] font-semibold leading-snug">
+                  <p className="text-[12px] font-semibold leading-snug text-foreground">
                     {tileNamesZh(autoDoc.headline)}
                   </p>
                 )}
-                <p className="line-clamp-4 text-[11px] leading-snug text-muted-foreground">
+                <p className="line-clamp-4 text-[11px] leading-snug text-foreground/80">
                   {tileNamesZh(autoDoc.explanation_zh)}
                 </p>
               </div>
@@ -240,9 +251,10 @@ export function Overlay() {
               autoPending &&
               canOutbound && (
                 <p
-                  className="text-[11px] text-muted-foreground"
+                  className="flex items-center gap-1.5 text-[11px] font-medium text-violet-400"
                   data-testid="overlay-explain-pending"
                 >
+                  <Loader2 className="size-3 animate-spin" />
                   {t('overlay.explain_pending')}
                 </p>
               )
