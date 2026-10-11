@@ -29,6 +29,7 @@ use crate::tutorial::material::ReviewDoc;
 const REVIEWS_SUBDIR: &str = "reviews";
 const LIVE_SUBDIR: &str = "live";
 const BOTREF_SUBDIR: &str = "botrefs";
+const OUTLINES_SUBDIR: &str = "outlines";
 
 pub struct TutorialStore {
     root: PathBuf,
@@ -38,7 +39,7 @@ pub struct TutorialStore {
 
 impl TutorialStore {
     /// Open (or create) the store at `root`, creating `reviews/`,
-    /// `live/` and `botrefs/` if missing.
+    /// `live/`, `botrefs/` and `outlines/` if missing.
     pub fn new(root: PathBuf) -> Result<Self> {
         fs::create_dir_all(root.join(REVIEWS_SUBDIR))
             .with_context(|| format!("failed to create tutorial dir {}", root.display()))?;
@@ -46,6 +47,9 @@ impl TutorialStore {
             .with_context(|| format!("failed to create tutorial live dir {}", root.display()))?;
         fs::create_dir_all(root.join(BOTREF_SUBDIR))
             .with_context(|| format!("failed to create tutorial botrefs dir {}", root.display()))?;
+        fs::create_dir_all(root.join(OUTLINES_SUBDIR)).with_context(|| {
+            format!("failed to create tutorial outlines dir {}", root.display())
+        })?;
         Ok(Self {
             root,
             write_lock: Mutex::new(()),
@@ -179,6 +183,53 @@ impl TutorialStore {
             .join(BOTREF_SUBDIR)
             .join(format!("{game_id}.json")))
     }
+
+    // --- replay outline cache ---
+
+    /// Persist a game's replay outline under `outlines/<game_id>.json`.
+    ///
+    /// Games are immutable once the recorder finalises them, so the
+    /// outline (a full replay + one analysis per decision point — the
+    /// expensive part of opening a game in the UI) caches forever.
+    pub fn save_outline(
+        &self,
+        game_id: &str,
+        outline: &crate::tutorial::assemble::ReplayOutline,
+    ) -> Result<()> {
+        let _g = self
+            .write_lock
+            .lock()
+            .expect("tutorial write lock poisoned");
+        let path = self.outline_path(game_id)?;
+        let body = serde_json::to_string_pretty(outline).context("serialise ReplayOutline")?;
+        fs::write(&path, body).with_context(|| format!("failed to write {}", path.display()))?;
+        Ok(())
+    }
+
+    /// Load a cached outline. Corrupt cache is an error (the caller may
+    /// recompute); absence is `None`.
+    pub fn load_outline(
+        &self,
+        game_id: &str,
+    ) -> Result<Option<crate::tutorial::assemble::ReplayOutline>> {
+        let path = self.outline_path(game_id)?;
+        if !path.exists() {
+            return Ok(None);
+        }
+        let body = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let outline: crate::tutorial::assemble::ReplayOutline = serde_json::from_str(&body)
+            .with_context(|| format!("corrupt outline cache at {}", path.display()))?;
+        Ok(Some(outline))
+    }
+
+    fn outline_path(&self, game_id: &str) -> Result<PathBuf> {
+        validate_game_id(game_id)?;
+        Ok(self
+            .root
+            .join(OUTLINES_SUBDIR)
+            .join(format!("{game_id}.json")))
+    }
 }
 
 /// Cache keys double as file names, so they must stay path-safe: ULIDs
@@ -289,6 +340,29 @@ mod tests {
         let doc = store.load_review("01JLEGACYGAME").unwrap().unwrap();
         assert_eq!(doc.overview, None);
         assert!(doc.turns.is_empty());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn outline_round_trips() {
+        use crate::tutorial::assemble::{OutlineDecision, ReplayOutline};
+        let root = temp_root("outline");
+        let store = TutorialStore::new(root.clone()).unwrap();
+        assert_eq!(store.load_outline("01JOUTLINE").unwrap(), None);
+        let outline = ReplayOutline {
+            seat: 2,
+            num_players: 4,
+            total_events: 1234,
+            decisions: vec![OutlineDecision {
+                event_index: 42,
+                junme: 7,
+                is_key: true,
+                actual: "5s".into(),
+            }],
+        };
+        store.save_outline("01JOUTLINE", &outline).unwrap();
+        assert_eq!(store.load_outline("01JOUTLINE").unwrap().unwrap(), outline);
+        assert!(store.load_outline("../escape").is_err());
         std::fs::remove_dir_all(root).ok();
     }
 

@@ -1380,17 +1380,26 @@ pub async fn tutorial_replay_outline(
     game_id: String,
     state: State<'_, AppState>,
 ) -> CmdResult<Option<ReplayOutline>> {
-    let store = state.history_store.clone();
+    let history = state.history_store.clone();
+    let tutorial = state.tutorial.clone();
     tokio::task::spawn_blocking(move || -> anyhow::Result<Option<ReplayOutline>> {
-        let Some(record) = store.get(&game_id)? else {
+        // Games are immutable once recorded, so the outline (a full
+        // replay + one analysis per decision point — seconds in a debug
+        // build) caches forever.
+        if let Some(cached) = tutorial.store.load_outline(&game_id)? {
+            return Ok(Some(cached));
+        }
+        let Some(record) = history.get(&game_id)? else {
             return Ok(None);
         };
-        let Some(events) = store.get_events(&game_id)? else {
+        let Some(events) = history.get_events(&game_id)? else {
             return Ok(None);
         };
         let seat = record.our_seat.unwrap_or(0);
         let scan = crate::tutorial::scan_decisions(&events, seat)?;
-        Ok(Some(scan.to_outline(seat, events.len())))
+        let outline = scan.to_outline(seat, events.len());
+        tutorial.store.save_outline(&game_id, &outline)?;
+        Ok(Some(outline))
     })
     .await
     .map_err(|e| format!("tutorial outline join error: {e}"))?
